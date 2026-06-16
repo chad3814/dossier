@@ -99,6 +99,9 @@ export function materialize(
   }
 
   entities.sort((a, b) => a.canonicalName.localeCompare(b.canonicalName));
+  // Derived from the books that actually contributed a surviving appearance. This equals
+  // the source's booksProcessed as long as every processed book yields ≥1 included anchor
+  // (true for the synthesized DCC log); a processed-but-empty book would not appear here.
   const booksProcessed = [...new Set(entities.flatMap((e) => e.appearances).map(bookOf))].sort((a, b) => a - b);
   return { booksProcessed, entities };
 }

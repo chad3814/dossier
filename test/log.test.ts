@@ -103,4 +103,20 @@ describe("materialize", () => {
     const reg = materialize(deltas, mergeMap);
     expect(reg.entities.map((e) => e.canonicalName)).toEqual(["Bucket Boy", "Carl"]);
   });
+
+  it("applies aliasSupplement aliases to the matching canonical entity", () => {
+    const reg = materialize(deltas, mergeMap, { aliasSupplement: { carl: ["The Eustace"] } });
+    const carl = reg.entities.find((e) => e.id === "carl")!;
+    expect(carl.aliases).toContain("The Eustace");
+  });
+
+  it("gates out a merge-group member introduced after the cutoff, keeping the canonical", () => {
+    // bucket-boy is introduced at B3·C1·¶1; the dangling dup bucket-boy-2 at B3·C2·¶4.
+    // A cutoff between them keeps the canonical and drops the later dup's anchor.
+    const reg = materialize(deltas, mergeMap, { upTo: "B3·C1·¶999" });
+    const bb = reg.entities.find((e) => e.id === "bucket-boy");
+    expect(bb).toBeDefined();
+    expect(bb!.appearances).toEqual(["B3·C1·¶1"]);
+    expect(reg.entities.map((e) => e.id)).not.toContain("bucket-boy-2");
+  });
 });
