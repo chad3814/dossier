@@ -1,0 +1,34 @@
+{
+  "name": "dossier",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Build a spoiler-aware character compendium from a book series' EPUBs — every named entity, every appearance (anchored to book·chapter·paragraph), and a description.",
+  "scripts": {
+    "preprocess": "tsx src/preprocess.ts",
+    "render": "tsx src/render.ts",
+    "dedupe": "tsx src/dedupe.ts",
+    "apply-delta": "tsx src/apply-delta.ts",
+    "crawler-numbers": "tsx src/crawler-numbers.ts",
+    "gen-workflow": "tsx src/gen-workflow.ts",
+    "lookup": "tsx src/registry.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "node-html-parser": "^7.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "eslint": "^9.17.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
