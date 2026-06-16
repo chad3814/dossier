@@ -224,6 +224,40 @@ function cleanAnchors(anchors: string[]): string[] {
   });
 }
 
+/** Resolve a group of variant entities into one canonical entity (dedupe's merge logic). */
+export function resolveGroup(group: RegistryEntity[]): RegistryEntity {
+  const primary = [...group].sort(
+    (a, b) => b.appearances.length - a.appearances.length || a.canonicalName.length - b.canonicalName.length,
+  )[0] as RegistryEntity;
+
+  const aliasSet = new Set<string>();
+  const anchorSet = new Set<string>();
+  const tagSet = new Set<EntityTag>();
+  let description = primary.description;
+  let significance = primary.significance;
+  for (const e of group) {
+    if (e !== primary) aliasSet.add(e.canonicalName);
+    e.aliases.forEach((a) => aliasSet.add(a));
+    e.appearances.forEach((a) => anchorSet.add(a));
+    e.tags.forEach((t) => tagSet.add(t));
+    if (e.description.length > description.length) description = e.description;
+    if (SIG_RANK[e.significance] > SIG_RANK[significance]) significance = e.significance;
+  }
+  aliasSet.delete(primary.canonicalName);
+
+  return {
+    ...primary,
+    aliases: cleanAliases(primary.canonicalName, [...aliasSet]),
+    appearances: cleanAnchors([...anchorSet]),
+    tags: [...tagSet],
+    description,
+    significance,
+    firstAppearance: primary.firstAppearance
+      ? { ...primary.firstAppearance, anchor: normalizeAnchor(primary.firstAppearance.anchor) }
+      : null,
+  };
+}
+
 /**
  * Collapse entities that are obvious variants of one another (same name modulo
  * case/punctuation, or a leading "Crawler"-style title). Unions aliases,
@@ -243,49 +277,8 @@ export function dedupe(registry: Registry): { registry: Registry; merged: number
   const out: RegistryEntity[] = [];
   let merged = 0;
   for (const group of groups.values()) {
-    if (group.length === 1) {
-      const only = group[0] as RegistryEntity;
-      out.push({
-        ...only,
-        aliases: cleanAliases(only.canonicalName, only.aliases),
-        appearances: cleanAnchors(only.appearances),
-        firstAppearance: only.firstAppearance
-          ? { ...only.firstAppearance, anchor: normalizeAnchor(only.firstAppearance.anchor) }
-          : null,
-      });
-      continue;
-    }
     merged += group.length - 1;
-    const primary = [...group].sort(
-      (a, b) => b.appearances.length - a.appearances.length || a.canonicalName.length - b.canonicalName.length,
-    )[0] as RegistryEntity;
-
-    const aliasSet = new Set<string>();
-    const anchorSet = new Set<string>();
-    const tagSet = new Set<EntityTag>();
-    let description = primary.description;
-    let significance = primary.significance;
-    for (const e of group) {
-      if (e !== primary) aliasSet.add(e.canonicalName);
-      e.aliases.forEach((a) => aliasSet.add(a));
-      e.appearances.forEach((a) => anchorSet.add(a));
-      e.tags.forEach((t) => tagSet.add(t));
-      if (e.description.length > description.length) description = e.description;
-      if (SIG_RANK[e.significance] > SIG_RANK[significance]) significance = e.significance;
-    }
-    aliasSet.delete(primary.canonicalName);
-
-    out.push({
-      ...primary,
-      aliases: cleanAliases(primary.canonicalName, [...aliasSet]),
-      appearances: cleanAnchors([...anchorSet]),
-      tags: [...tagSet],
-      description,
-      significance,
-      firstAppearance: primary.firstAppearance
-        ? { ...primary.firstAppearance, anchor: normalizeAnchor(primary.firstAppearance.anchor) }
-        : null,
-    });
+    out.push(resolveGroup(group));
   }
 
   out.sort((a, b) => a.canonicalName.localeCompare(b.canonicalName));

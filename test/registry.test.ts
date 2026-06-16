@@ -5,6 +5,7 @@ import {
   foldFindings,
   lookup,
   normalizeName,
+  resolveGroup,
   toIndex,
 } from "../src/registry.js";
 import type { ChapterFindings, Registry, RegistryDelta, RegistryEntity } from "../src/types.js";
@@ -166,5 +167,50 @@ describe("foldFindings", () => {
     foldFindings(reg, findings);
     expect(reg.entities.map((e) => e.id)).toEqual(["carl", "carl-2"]);
     expect(reg.entities[0]?.firstAppearance?.anchor).toBe("B1·C1·¶9");
+  });
+});
+
+describe("resolveGroup", () => {
+  it("resolves a single-member group: cleans aliases/anchors, normalizes first anchor", () => {
+    const e = mkEntity({
+      id: "carl",
+      canonicalName: "Carl",
+      aliases: ["Carl", "the Crawler"],
+      appearances: ["B1·C2·¶3", "B1·C1·¶1"],
+      firstAppearance: { anchor: "[B1·C1·¶1]", snippet: "Carl woke." },
+    });
+    const r = resolveGroup([e]);
+    expect(r.aliases).toEqual(["the Crawler"]); // canonical-equal alias dropped
+    expect(r.appearances).toEqual(["B1·C1·¶1", "B1·C2·¶3"]); // sorted, normalized
+    expect(r.firstAppearance?.anchor).toBe("B1·C1·¶1");
+  });
+
+  it("merges a multi-member group: most-appearances primary, unions aliases/tags, longest desc, max significance", () => {
+    const primary = mkEntity({
+      id: "bucket-boy",
+      canonicalName: "Bucket Boy",
+      aliases: ["BB"],
+      tags: ["in_world"],
+      significance: "minor",
+      description: "short",
+      appearances: ["B3·C1·¶1", "B3·C2·¶2"],
+    });
+    const dup = mkEntity({
+      id: "bucket-boy-2",
+      canonicalName: "The Bucket Boy",
+      aliases: ["Crocodilian"],
+      tags: ["item_object"],
+      significance: "supporting",
+      description: "a much longer description",
+      appearances: ["B8·C5·¶9"],
+    });
+    const r = resolveGroup([primary, dup]);
+    expect(r.id).toBe("bucket-boy"); // primary = most appearances
+    expect(r.canonicalName).toBe("Bucket Boy");
+    expect(r.aliases).toEqual(expect.arrayContaining(["BB", "Crocodilian", "The Bucket Boy"]));
+    expect(r.tags.sort()).toEqual(["in_world", "item_object"]);
+    expect(r.significance).toBe("supporting");
+    expect(r.description).toBe("a much longer description");
+    expect(r.appearances).toEqual(["B3·C1·¶1", "B3·C2·¶2", "B8·C5·¶9"]);
   });
 });
