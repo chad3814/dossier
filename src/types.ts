@@ -123,3 +123,12 @@ export interface BookManifest {
   sectionCount: number;
   totalWords: number;
 }
+
+/** A reading-position cutoff anchor, e.g. "B2·C4" (whole chapter) or "B2·C4·¶7". */
+export type Cutoff = string;
+
+/** Frozen id → canonical-id map capturing dedupe merges, applied at materialize time. */
+export type MergeMap = Record<string, string>;
+
+/** Frozen extra aliases (keyed by canonical id) added by post-passes beyond the delta log. */
+export type AliasSupplement = Record<string, string[]>;
