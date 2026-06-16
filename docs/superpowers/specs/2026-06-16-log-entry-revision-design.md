@@ -82,7 +82,7 @@ the full view and allows exact `registry.json` reproduction:
 | New file | Purpose |
 |---|---|
 | `log.ts` | `LogEvent`/cutoff types + `materialize(deltas, mergeMap, upTo?)` pure fold/gate function |
-| `migrate-to-log.ts` | One-time deterministic migration: synthesize 1–2, build + verify merge-map |
+| `migrate-to-log.ts` | One-time deterministic migration: synthesize 1–2, build + verify merge-map and alias-supplement |
 | `view.ts` | CLI: `view --through B2·C4` → `materialize` + `render` |
 
 Reused as-is: `anchorSortKey`, `normalizeAnchor`, `dedupe`, `cleanAnchors` (registry.ts);
@@ -95,6 +95,21 @@ Reused as-is: `anchorSortKey`, `normalizeAnchor`, `dedupe`, `cleanAnchors` (regi
 - `dcc/deltas/merge-map.json` — `{ "bucket-boy-2": "bucket-boy", … }`, the frozen dedupe
   collisions (the 82, plus any future ones). Applied as a lens at fold time; history is
   never rewritten.
+- `dcc/deltas/alias-supplement.json` — `{ "<id>": ["Crawler #4,122", …] }`, aliases present
+  in `registry.json` but not produced by folding the deltas. In DCC this is the residue of
+  the **series-specific** `crawler-numbers` pass (in-world Crawler IDs the extraction agents
+  didn't already capture inline) — measured at exactly **1 entry** for the current data.
+  Like the merge-map, it's a frozen lens applied at fold time; required for exact
+  reproduction without re-reading EPUB text. Applied globally (not position-gated) — a
+  name-form leak is acceptable in Phase 1.
+
+> **Generic vs. series-specific data — follow-up.** `merge-map.json` is generic
+> (dedupe collisions occur in any series); `alias-supplement.json` is currently holding
+> *series-specific* residue (crawler IDs). After implementation we need to decide how the
+> on-disk layout separates generic reconciliation data from per-series data (e.g. a
+> `<series>/` profile directory vs. shared files), so the vending series and future series
+> don't inherit DCC-specific assumptions. Out of scope for Phase 1; tracked here so the
+> decision isn't lost.
 
 ## `materialize(deltas, mergeMap, upTo?)` → `Registry`
 
@@ -129,10 +144,14 @@ Pure function; mirrors `applyDelta` but builds fresh, gated, and id-remapped.
    from `registry.json` (the 82) are dedupe collisions. Map each to its canonical entity via
    the existing `mergeKey(canonicalName)` grouping — the same logic that produced the
    registry. Fail loudly if any dangling id does not resolve.
-3. **Verify (hard gate):** assert `materialize(allDeltas, mergeMap)` deep-equals the
-   committed `registry.json` (modulo key ordering). This is the migration's pass/fail and
-   the safety net for trusting a 3,824-entity transform.
-4. **Diagnostic check (not a blocker):** compare `materialize(…, through-B7)` to the
+3. **Build alias-supplement:** for entities that appear in the raw deltas, collect any
+   `registry.json` alias not produced by folding those deltas (the `crawler-numbers` residue
+   — 1 entry for DCC). Entities whose data is synthesized verbatim from the registry (books
+   1–2) have no gap by construction and are skipped.
+4. **Verify (hard gate):** assert `materialize(allDeltas, mergeMap, { aliasSupplement })`
+   deep-equals the committed `registry.json` (modulo key ordering). This is the migration's
+   pass/fail and the safety net for trusting a 3,824-entity transform.
+5. **Diagnostic check (not a blocker):** compare `materialize(…, through-B7)` to the
    committed `registry.books1-7.json`. Expected to match because descriptions are set once
    at introduction and book-8 merges/entities gate out at B7; a divergence would reveal
    `dedupe` order-sensitivity and is worth surfacing. `registry.json` reproduction is the
