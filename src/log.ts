@@ -25,7 +25,9 @@ function newBookOf(delta: RegistryDelta): number {
 }
 
 function firstAnchorOf(ne: RegistryEntity): string | null {
-  if (ne.firstAppearance) return normalizeAnchor(ne.firstAppearance.anchor);
+  // Gate the introduction on the EARLIEST appearance, not the firstAppearance field:
+  // after dedupe, registry.firstAppearance can be later than a merged member's earliest
+  // anchor, and an entity must be introduced before any of its appearances are folded.
   const sorted = ne.appearances
     .map(normalizeAnchor)
     .sort((a, b) => {
@@ -33,7 +35,8 @@ function firstAnchorOf(ne: RegistryEntity): string | null {
       const kb = anchorSortKey(b);
       return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
     });
-  return sorted[0] ?? null;
+  if (sorted.length > 0) return sorted[0] as string;
+  return ne.firstAppearance ? normalizeAnchor(ne.firstAppearance.anchor) : null;
 }
 
 /**

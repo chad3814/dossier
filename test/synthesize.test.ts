@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildAliasSupplement, buildMergeMap, synthesizeEarlyDeltas } from "../src/synthesize.js";
+import { materialize } from "../src/log.js";
+import { synthesizeLog } from "../src/synthesize.js";
 import type { Registry, RegistryDelta, RegistryEntity } from "../src/types.js";
 
 function mkEntity(p: Partial<RegistryEntity> & { id: string; canonicalName: string }): RegistryEntity {
@@ -15,100 +16,69 @@ const registry: Registry = {
     mkEntity({
       id: "carl", canonicalName: "Carl", aliases: ["the Crawler"], description: "A crawler.",
       firstAppearance: { anchor: "B1·C1·¶1", snippet: "Carl woke." },
-      appearances: ["B1·C1·¶1", "B2·C3·¶5", "B3·C1·¶10"], // spans 1,2,3
+      appearances: ["B1·C1·¶1", "B2·C3·¶5", "B3·C1·¶10"],
     }),
     mkEntity({
       id: "donut", canonicalName: "Princess Donut", description: "A cat.",
       firstAppearance: { anchor: "B2·C1·¶2", snippet: "A cat." },
-      appearances: ["B2·C1·¶2"], // introduced in book 2
+      appearances: ["B2·C1·¶2"],
     }),
     mkEntity({
       id: "mordecai", canonicalName: "Mordecai",
       firstAppearance: { anchor: "B3·C2·¶1", snippet: "Mordecai." },
-      appearances: ["B3·C2·¶1"], // book 3 only — must NOT appear in synthesized 1/2
+      appearances: ["B3·C2·¶1"],
     }),
   ],
 };
 
-describe("synthesizeEarlyDeltas", () => {
-  it("introduces book-1 entities in delta 1 with only their book-1 anchors", () => {
-    const deltas = synthesizeEarlyDeltas(registry, [1, 2]);
-    const d1 = deltas[1]!;
-    expect(d1.booksProcessed).toEqual([1]);
-    const carl = d1.newEntities.find((e) => e.id === "carl")!;
+function byBook(reg: Registry): Map<number, RegistryDelta> {
+  return new Map(synthesizeLog(reg).map((d): [number, RegistryDelta] => [d.booksProcessed[0] as number, d]));
+}
+
+describe("synthesizeLog", () => {
+  it("introduces each entity in its earliest-appearance book with that book's anchors", () => {
+    const b = byBook(registry);
+    const carl = b.get(1)!.newEntities.find((e) => e.id === "carl")!;
     expect(carl.appearances).toEqual(["B1·C1·¶1"]);
     expect(carl.firstAppearance?.anchor).toBe("B1·C1·¶1");
     expect(carl.description).toBe("A crawler.");
     expect(carl.aliases).toEqual(["the Crawler"]);
-    expect(d1.newEntities.map((e) => e.id)).not.toContain("mordecai");
+    expect(b.get(2)!.newEntities.map((e) => e.id)).toContain("donut");
+    expect(b.get(3)!.newEntities.map((e) => e.id)).toContain("mordecai");
   });
 
-  it("re-mentions a book-1 entity seen again in book 2 as a matched event, not a new entity", () => {
-    const deltas = synthesizeEarlyDeltas(registry, [1, 2]);
-    const d2 = deltas[2]!;
-    expect(d2.booksProcessed).toEqual([1, 2]);
-    expect(d2.matched).toContainEqual({ id: "carl", anchor: "B2·C3·¶5", aliases: [] });
-    expect(d2.newEntities.map((e) => e.id)).not.toContain("carl");
+  it("emits later-book appearances as matched events, not new entities", () => {
+    const b = byBook(registry);
+    expect(b.get(2)!.matched).toContainEqual({ id: "carl", anchor: "B2·C3·¶5", aliases: [] });
+    expect(b.get(3)!.matched).toContainEqual({ id: "carl", anchor: "B3·C1·¶10", aliases: [] });
+    expect(b.get(2)!.newEntities.map((e) => e.id)).not.toContain("carl");
   });
 
-  it("introduces a book-2-first entity in delta 2", () => {
-    const deltas = synthesizeEarlyDeltas(registry, [1, 2]);
-    const d2 = deltas[2]!;
-    const donut = d2.newEntities.find((e) => e.id === "donut")!;
-    expect(donut.appearances).toEqual(["B2·C1·¶2"]);
-    expect(donut.firstAppearance?.anchor).toBe("B2·C1·¶2");
-  });
-});
-
-describe("buildMergeMap", () => {
-  const reg: Registry = {
-    booksProcessed: [3],
-    entities: [mkEntity({ id: "bucket-boy", canonicalName: "Bucket Boy" })],
-  };
-  const rawDeltas: RegistryDelta[] = [
-    {
-      booksProcessed: [3], matched: [],
-      newEntities: [
-        mkEntity({ id: "bucket-boy", canonicalName: "Bucket Boy" }),
-        mkEntity({ id: "bucket-boy-2", canonicalName: "Bucket Boy!" }), // dangling newEntity (punctuation variant)
-      ],
-    },
-  ];
-
-  it("maps each dangling newEntity id to its canonical (mergeKey match)", () => {
-    expect(buildMergeMap(reg, rawDeltas)).toEqual({ "bucket-boy-2": "bucket-boy" });
-  });
-
-  it("drops a matched-only dangling id (never introduced) instead of throwing", () => {
-    // Mirrors applyDelta dropping unknown matched ids (e.g. the real 'sam' in book 6).
-    const matchedOnly: RegistryDelta[] = [
-      { booksProcessed: [3], matched: [{ id: "sam", anchor: "B3·C1·¶1", aliases: [] }], newEntities: [] },
-    ];
-    expect(buildMergeMap(reg, matchedOnly)).toEqual({}); // "sam" left unmapped, no throw
-  });
-
-  it("throws if a dangling newEntity id cannot be resolved to a registry entity", () => {
-    const orphan: RegistryDelta[] = [
-      { booksProcessed: [3], matched: [], newEntities: [mkEntity({ id: "ghost-2", canonicalName: "Ghost Person" })] },
-    ];
-    expect(() => buildMergeMap(reg, orphan)).toThrow(/ghost-2/);
-  });
-});
-
-describe("buildAliasSupplement", () => {
-  it("captures registry aliases that folding the deltas would not produce", () => {
+  it("introduces at the earliest appearance even when firstAppearance is later (post-dedupe artifact)", () => {
     const reg: Registry = {
-      booksProcessed: [3],
-      entities: [mkEntity({ id: "carl", canonicalName: "Carl", aliases: ["Crawler #4,122", "the Crawler"] })],
+      booksProcessed: [5, 6],
+      entities: [
+        mkEntity({
+          id: "annie", canonicalName: "Annie",
+          firstAppearance: { anchor: "B6·C1·¶9", snippet: "Annie." }, // later than the earliest appearance
+          appearances: ["B6·C1·¶9", "B5·Epilogue·¶139"],
+        }),
+      ],
     };
-    const rawDeltas: RegistryDelta[] = [
-      {
-        booksProcessed: [3],
-        matched: [{ id: "carl", anchor: "B3·C1·¶1", aliases: ["the Crawler"] }],
-        newEntities: [],
-      },
-    ];
-    // "Crawler #4,122" is in the registry but never in a delta event -> supplement.
-    expect(buildAliasSupplement(reg, rawDeltas, {})).toEqual({ carl: ["Crawler #4,122"] });
+    const b = byBook(reg);
+    expect(b.get(5)!.newEntities.map((e) => e.id)).toContain("annie");
+    expect(b.get(5)!.newEntities[0]!.appearances).toEqual(["B5·Epilogue·¶139"]);
+    // and the earlier anchor survives a full round-trip (it is not dropped):
+    const full = materialize(synthesizeLog(reg));
+    expect(full.entities[0]!.appearances).toEqual(["B5·Epilogue·¶139", "B6·C1·¶9"]);
+  });
+
+  it("round-trips through materialize: materialize(synthesizeLog(reg)) reproduces the registry", () => {
+    const full = materialize(synthesizeLog(registry));
+    expect(full.entities.map((e) => e.id).sort()).toEqual(["carl", "donut", "mordecai"]);
+    expect(full.booksProcessed).toEqual([1, 2, 3]);
+    const carl = full.entities.find((e) => e.id === "carl")!;
+    expect(carl.appearances).toEqual(["B1·C1·¶1", "B2·C3·¶5", "B3·C1·¶10"]);
+    expect(carl.aliases).toEqual(["the Crawler"]);
   });
 });

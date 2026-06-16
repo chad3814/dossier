@@ -9,6 +9,8 @@
     "render": "tsx src/render.ts",
     "dedupe": "tsx src/dedupe.ts",
     "apply-delta": "tsx src/apply-delta.ts",
+    "migrate-to-log": "tsx src/migrate-to-log.ts",
+    "view": "tsx src/view.ts",
     "crawler-numbers": "tsx src/crawler-numbers.ts",
     "gen-workflow": "tsx src/gen-workflow.ts",
     "lookup": "tsx src/registry.ts",

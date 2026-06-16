@@ -1,5 +1,15 @@
 # Log-entry Revision (Phase 1) Implementation Plan
 
+> **⚠️ Implemented with a mid-execution architecture pivot.** Tasks 1–4 (types,
+> `resolveGroup`, `withinCutoff`, `materialize`) were built as written. Tasks 5–9 changed:
+> the raw 3–8 deltas proved to be an *incomplete* log (entities like `mrs-mcgibbons` have no
+> `newEntity`; `firstAppearance` can lag the earliest appearance), so — with user approval —
+> the approach pivoted to **synthesizing the complete per-book log from `registry.json`**
+> (`synthesizeLog`), persisted under `casefiles/dcc/log/`. The merge-map and
+> alias-supplement (and `buildMergeMap`/`buildAliasSupplement`/`synthesizeEarlyDeltas`) were
+> dropped. See the **Revision** note in the spec for the as-built design; the per-task code
+> blocks below for Tasks 5–9 are superseded by the committed implementation.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make a position-gated event log the source of truth for the character compendium: `materialize(deltas, mergeMap, {upTo})` replays per-book deltas to a reading position and derives the registry, with the full-series materialization reproducing the committed `registry.json` exactly.

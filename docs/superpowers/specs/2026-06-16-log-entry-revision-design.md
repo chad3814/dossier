@@ -1,8 +1,36 @@
 # Log-entry revision — design
 
 **Date:** 2026-06-16
-**Status:** Approved (Phase 1 scope)
+**Status:** Implemented (Phase 1)
 **Component:** `dossier` (tooling); DCC data migration lives in `casefiles/dcc/`
+
+## Revision (2026-06-16): pivot to a registry-synthesized log
+
+During implementation the raw 3–8 deltas turned out to be an **incomplete** event log: some
+registry entities have no `newEntity` introduction in any delta (e.g. `mrs-mcgibbons`,
+which appears only as `matched` events in book 3), and `registry.json`'s `firstAppearance`
+field is sometimes *later* than an entity's earliest appearance (dedupe keeps the primary
+member's first sighting). The raw deltas therefore cannot reproduce `registry.json` on their
+own.
+
+The approach pivoted (with user approval) from *"reuse the raw 3–8 deltas as the canonical
+log + a frozen merge-map/alias-supplement"* to **synthesizing the complete per-book log
+deterministically from `registry.json`**. `registry.json` already contains every anchored
+appearance for every entity, so it is the complete source. Consequences:
+
+- **Dropped:** the merge-map and alias-supplement artifacts, and `buildMergeMap` /
+  `buildAliasSupplement` / `synthesizeEarlyDeltas`. No dangling ids (the log uses canonical
+  registry ids), no crawler-residue gap (all aliases come from the registry).
+- **Added:** `synthesizeLog(registry)` → a complete per-book log, persisted under
+  `casefiles/dcc/log/delta-book{1..8}.json`. `materialize(synthesizeLog(registry))`
+  reproduces `registry.json` **exactly** (3,824 entities; verified).
+- **Retained:** the raw `casefiles/dcc/deltas/` (books 3–8) as the historical extraction
+  record and the substrate for Phase 2 (per-chapter description events).
+- Entities are introduced at their **earliest appearance**, not `firstAppearance`, so
+  post-dedupe ordering quirks don't drop early anchors.
+
+Sections below describe the **as-built** Phase 1. Where they still reference the merge-map /
+alias-supplement / delta-reuse, treat this Revision note as authoritative.
 
 ## Background
 
