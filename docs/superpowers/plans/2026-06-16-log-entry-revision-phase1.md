@@ -925,7 +925,7 @@ Expected: PASS.
 - [ ] **Step 4: Run the migration against real DCC data**
 
 Run: `npm run migrate-to-log`
-Expected: `migrate-to-log: OK — reproduced registry.json (3824 entities). merge-map: 82 entries, alias-supplement: 1 entries. through-B7 diagnostic: MATCH.`
+Expected: `migrate-to-log: OK — reproduced registry.json (3824 entities). merge-map: 81 entries, alias-supplement: 1 entries. through-B7 diagnostic: MATCH.` (81 = the 82 dangling ids minus the matched-only `sam`, which is dropped not mapped. The exact merge-map/supplement counts matter less than the `OK — reproduced` gate passing.)
 
 If reproduction FAILS: do not work around it. Diff `stable(full)` vs `stable(registry)` for the first differing entity (add a temporary diff print, or load both written-out structures in a scratch test) and fix `resolveGroup`/`materialize`/`synthesizeEarlyDeltas` until it reproduces. A `DIFF` on the through-B7 diagnostic is acceptable and should be reported, not fixed (it reveals `dedupe` order-sensitivity); only the full reproduction is a hard gate.
 
