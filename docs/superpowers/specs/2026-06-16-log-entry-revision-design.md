@@ -141,9 +141,12 @@ Pure function; mirrors `applyDelta` but builds fresh, gated, and id-remapped.
      first-appearance snippet; aliases attached at introduction (best-effort — the accepted
      fidelity caveat, superseded by Phase 2 if desired).
 2. **Build merge-map:** collect every id referenced across raw deltas 3–8; those absent
-   from `registry.json` (the 82) are dedupe collisions. Map each to its canonical entity via
-   the existing `mergeKey(canonicalName)` grouping — the same logic that produced the
-   registry. Fail loudly if any dangling id does not resolve.
+   from `registry.json` (82 ids) are dedupe collisions. Map each *introduced* (newEntity)
+   dangling id to its canonical entity via the existing `mergeKey(canonicalName)` grouping —
+   the same logic that produced the registry. Fail loudly if a dangling *newEntity* id does
+   not resolve. A *matched-only* dangling id — referenced by a matched event but never
+   introduced (1 case in DCC: `sam`, matched once in book 6) — is left unmapped and dropped
+   at fold time, exactly as `applyDelta` drops unknown matched ids in the original pipeline.
 3. **Build alias-supplement:** for entities that appear in the raw deltas, collect any
    `registry.json` alias not produced by folding those deltas (the `crawler-numbers` residue
    — 1 entry for DCC). Entities whose data is synthesized verbatim from the registry (books

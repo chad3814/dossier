@@ -680,15 +680,23 @@ describe("buildMergeMap", () => {
     },
   ];
 
-  it("maps each delta id absent from the registry to its canonical (mergeKey match)", () => {
+  it("maps each dangling newEntity id to its canonical (mergeKey match)", () => {
     expect(buildMergeMap(reg, rawDeltas)).toEqual({ "bucket-boy-2": "bucket-boy" });
   });
 
-  it("throws if a dangling id cannot be resolved to a registry entity", () => {
-    const orphan: RegistryDelta[] = [
-      { booksProcessed: [3], matched: [{ id: "ghost", anchor: "B3·C1·¶1", aliases: [] }], newEntities: [] },
+  it("drops a matched-only dangling id (never introduced) instead of throwing", () => {
+    // Mirrors applyDelta dropping unknown matched ids (e.g. the real 'sam' in book 6).
+    const matchedOnly: RegistryDelta[] = [
+      { booksProcessed: [3], matched: [{ id: "sam", anchor: "B3·C1·¶1", aliases: [] }], newEntities: [] },
     ];
-    expect(() => buildMergeMap(reg, orphan)).toThrow(/ghost/);
+    expect(buildMergeMap(reg, matchedOnly)).toEqual({}); // "sam" left unmapped, no throw
+  });
+
+  it("throws if a dangling newEntity id cannot be resolved to a registry entity", () => {
+    const orphan: RegistryDelta[] = [
+      { booksProcessed: [3], matched: [], newEntities: [mkEntity({ id: "ghost-2", canonicalName: "Ghost Person" })] },
+    ];
+    expect(() => buildMergeMap(reg, orphan)).toThrow(/ghost-2/);
   });
 });
 
@@ -746,9 +754,13 @@ export function buildMergeMap(registry: Registry, rawDeltas: RegistryDelta[]): M
     for (const id of ids) {
       if (registryIds.has(id) || map[id]) continue;
       const name = nameById.get(id);
-      const canonical = name ? canonicalByKey.get(mergeKey(name)) : undefined;
+      // A matched-only dangling id (never introduced as a newEntity, e.g. the real
+      // 'sam' matched once in book 6) is dropped at fold time exactly as applyDelta
+      // drops unknown matched ids — leave it unmapped rather than throwing.
+      if (!name) continue;
+      const canonical = canonicalByKey.get(mergeKey(name));
       if (!canonical) {
-        throw new Error(`buildMergeMap: cannot resolve dangling id "${id}" (name: ${name ?? "?"}) to a registry entity`);
+        throw new Error(`buildMergeMap: cannot resolve dangling newEntity id "${id}" (name: ${name}) to a registry entity`);
       }
       map[id] = canonical;
     }
