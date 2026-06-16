@@ -675,7 +675,7 @@ describe("buildMergeMap", () => {
       booksProcessed: [3], matched: [],
       newEntities: [
         mkEntity({ id: "bucket-boy", canonicalName: "Bucket Boy" }),
-        mkEntity({ id: "bucket-boy-2", canonicalName: "The Bucket Boy" }), // dangling
+        mkEntity({ id: "bucket-boy-2", canonicalName: "Bucket Boy!" }), // dangling newEntity (punctuation variant)
       ],
     },
   ];

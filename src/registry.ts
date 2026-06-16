@@ -159,8 +159,8 @@ export function applyDelta(
   return { registry: { booksProcessed, entities: registry.entities }, added, appended, dropped };
 }
 
-/** Leading title/role words that denote the same entity (e.g. "Crawler Frank Q" == "Frank Q", "The Bucket Boy" == "Bucket Boy"). */
-const TITLE_PREFIXES = ["crawler", "the"];
+/** Leading title/role words that denote the same entity (e.g. "Crawler Frank Q" == "Frank Q"). */
+const TITLE_PREFIXES = ["crawler"];
 
 /** Merge key collapsing case, punctuation, and a leading title prefix. */
 export function mergeKey(name: string): string {
