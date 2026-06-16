@@ -1,6 +1,7 @@
 {
   "name": "dossier",
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "description": "Build a spoiler-aware character compendium from a book series' EPUBs — every named entity, every appearance (anchored to book·chapter·paragraph), and a description.",
   "scripts": {
