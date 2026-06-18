@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildRedescribeConstants } from "../src/gen-redescribe.js";
-import { reconcileAliases } from "../src/reconcile-aliases.js";
+import { isNoiseAlias, reconcileAliases } from "../src/reconcile-aliases.js";
 import { validateAliases, validateDescriptions } from "../src/validate-descriptions.js";
 import type { AliasEvent, DescriptionEvent, Registry, RegistryEntity } from "../src/types.js";
 
@@ -65,6 +65,31 @@ describe("reconcileAliases", () => {
     };
     const out = reconcileAliases(r, [{ id: "carl", anchor: "B1·C1·¶1", alias: "the Crawler" }]);
     expect(out.length).toBe(1);
+  });
+
+  it("drops noise aliases and collapses duplicates to the earliest anchor", () => {
+    const r: Registry = {
+      booksProcessed: [1],
+      entities: [mk({ id: "carl", canonicalName: "Carl", aliases: ["the Crawler", "me"], appearances: ["B1·C1·¶1", "B3·C9·¶2"] })],
+    };
+    const out = reconcileAliases(r, [
+      { id: "carl", anchor: "B3·C1·¶1", alias: "the Crawler" }, // later duplicate
+      { id: "carl", anchor: "B1·C2·¶3", alias: "the Crawler" }, // earlier — wins
+      { id: "carl", anchor: "B1·C1·¶1", alias: "me" }, // noise — dropped
+    ]);
+    expect(out.map((e) => e.alias)).toEqual(["the Crawler"]); // "me" dropped, no dup
+    expect(out[0]!.anchor).toBe("B1·C2·¶3"); // earliest kept
+  });
+});
+
+describe("isNoiseAlias", () => {
+  it("flags bare pronouns/articles but not real name-forms", () => {
+    expect(isNoiseAlias("me")).toBe(true);
+    expect(isNoiseAlias("She")).toBe(true);
+    expect(isNoiseAlias("the")).toBe(true);
+    expect(isNoiseAlias("the cat")).toBe(false);
+    expect(isNoiseAlias("Crawler #4,122")).toBe(false);
+    expect(isNoiseAlias("Donut")).toBe(false);
   });
 });
 

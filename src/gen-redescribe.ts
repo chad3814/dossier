@@ -2,6 +2,7 @@ import { copyFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } fro
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chapterEntities } from "./log.js";
+import { isNoiseAlias } from "./reconcile-aliases.js";
 import { anchorSortKey, normalizeAnchor } from "./registry.js";
 import type { BookManifest, DescriptionEvent, EntityType, RegistryDelta } from "./types.js";
 
@@ -98,7 +99,9 @@ function main(): void {
     priorEvents = [];
   }
 
-  const aliasesById = Object.fromEntries(deltas.flatMap((d) => d.newEntities).map((e) => [e.id, e.aliases]));
+  const aliasesById = Object.fromEntries(
+    deltas.flatMap((d) => d.newEntities).map((e) => [e.id, e.aliases.filter((a) => !isNoiseAlias(a))]),
+  );
   const constants = buildRedescribeConstants({
     bookNumber,
     manifestSections: manifest.sections.map((s) => ({ label: s.label, file: s.file })),
