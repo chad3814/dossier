@@ -27,6 +27,16 @@ describe.skipIf(!hasData)("DCC log reproduction", () => {
     const registry = JSON.parse(readFileSync(registryPath, "utf8")) as Registry;
     const full = materialize(synthesizeLog(registry));
     expect(full.entities.length).toBe(registry.entities.length);
-    expect(stable(full)).toEqual(stable(registry));
+    // Phase 2 regenerates `description` and `significance` as versioned events, so exclude
+    // them here; the appearance structure (ids, appearances, aliases, tags, firstAppearance)
+    // still reproduces exactly.
+    const stripEntity = (e: Registry["entities"][number]): Record<string, unknown> => {
+      const clone: Record<string, unknown> = { ...e };
+      delete clone.description;
+      delete clone.significance;
+      return clone;
+    };
+    expect(full.booksProcessed).toEqual(registry.booksProcessed);
+    expect(stable(full.entities.map(stripEntity))).toEqual(stable(registry.entities.map(stripEntity)));
   });
 });

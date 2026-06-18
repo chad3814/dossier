@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { materialize } from "./log.js";
 import { renderMarkdown } from "./render.js";
-import type { RegistryDelta } from "./types.js";
+import type { DescriptionEvent, RegistryDelta } from "./types.js";
 
 /** Parse `--flag value` pairs; returns a map of flag → value. */
 function parseArgs(argv: string[]): Record<string, string> {
@@ -36,7 +36,11 @@ function main(): void {
 
   const files = readdirSync(logDir).filter((f) => /^delta-book\d+\.json$/.test(f));
   const deltas = files.map((f) => JSON.parse(readFileSync(join(logDir, f), "utf8")) as RegistryDelta);
-  const registry = materialize(deltas, {}, { upTo: args.through || undefined });
+  const descPath = join(logDir, "descriptions.json");
+  const descriptions = existsSync(descPath)
+    ? (JSON.parse(readFileSync(descPath, "utf8")) as DescriptionEvent[])
+    : undefined;
+  const registry = materialize(deltas, {}, { upTo: args.through || undefined, descriptions });
   const at = args.through ? `through ${args.through}` : "full series";
 
   if (args.out) {

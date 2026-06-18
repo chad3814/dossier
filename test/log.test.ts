@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { materialize, withinCutoff } from "../src/log.js";
-import type { RegistryDelta } from "../src/types.js";
+import { chapterEntities, materialize, withinCutoff } from "../src/log.js";
+import type { DescriptionEvent, RegistryDelta } from "../src/types.js";
 
 describe("withinCutoff", () => {
   it("returns true for every anchor when no cutoff is given", () => {
@@ -118,5 +118,39 @@ describe("materialize", () => {
     expect(bb).toBeDefined();
     expect(bb!.appearances).toEqual(["B3·C1·¶1"]);
     expect(reg.entities.map((e) => e.id)).not.toContain("bucket-boy-2");
+  });
+});
+
+describe("materialize description overlay", () => {
+  const descs: DescriptionEvent[] = [
+    { id: "carl", anchor: "B1·C1·¶1", description: "A man.", significance: "minor" },
+    { id: "carl", anchor: "B3·C1·¶10", description: "A seasoned crawler.", significance: "major" },
+  ];
+
+  it("uses the latest version <= cutoff", () => {
+    const at2 = materialize(deltas, mergeMap, { upTo: "B2·C99", descriptions: descs });
+    expect(at2.entities.find((e) => e.id === "carl")!.description).toBe("A man.");
+    const full = materialize(deltas, mergeMap, { descriptions: descs });
+    const carl = full.entities.find((e) => e.id === "carl")!;
+    expect(carl.description).toBe("A seasoned crawler.");
+    expect(carl.significance).toBe("major");
+  });
+
+  it("falls back to the entity's blob description when no event <= cutoff", () => {
+    const reg = materialize(deltas, mergeMap, {
+      upTo: "B1·C99",
+      descriptions: [{ id: "carl", anchor: "B5·C1·¶1", description: "late", significance: "major" }],
+    });
+    expect(reg.entities.find((e) => e.id === "carl")!.description).toBe("A crawler.");
+  });
+});
+
+describe("chapterEntities", () => {
+  it("groups appearances by book·section with each entity's first anchor there", () => {
+    const map = chapterEntities(deltas);
+    const b1c1 = map.get("B1·C1")!;
+    expect(b1c1.find((e) => e.id === "carl")!.anchor).toBe("B1·C1·¶1");
+    const b3c1 = map.get("B3·C1")!;
+    expect(b3c1.map((e) => e.id)).toContain("carl");
   });
 });

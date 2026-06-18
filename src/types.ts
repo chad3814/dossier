@@ -132,3 +132,11 @@ export type MergeMap = Record<string, string>;
 
 /** Frozen extra aliases (keyed by canonical id) added by post-passes beyond the delta log. */
 export type AliasSupplement = Record<string, string[]>;
+
+/** One bounded description of an entity, valid from `anchor` until the next version (Phase 2). */
+export interface DescriptionEvent {
+  id: string;
+  anchor: string;
+  description: string;
+  significance: Significance;
+}
