@@ -56,9 +56,11 @@ describe("buildRedescribeConstants", () => {
         { id: "carl", anchor: "B1·C1·¶1", description: "early", significance: "minor" },
         { id: "carl", anchor: "B1·C9·¶1", description: "later", significance: "supporting" },
       ],
+      aliasesById: { carl: ["the Crawler", "Crawler #4,122"] },
     });
     expect(out.chapters[0]!.entities[0]).toMatchObject({ id: "carl", anchor: "B2·C1·¶3", canonicalName: "Carl", type: "person" });
     expect(out.seed.carl).toEqual({ description: "later", significance: "supporting" });
+    expect(out.aliasesById.carl).toEqual(["the Crawler", "Crawler #4,122"]);
   });
 
   it("drops entities with no metadata and chapters keep manifest order", () => {
@@ -71,6 +73,7 @@ describe("buildRedescribeConstants", () => {
       ]),
       index: [{ id: "carl", canonicalName: "Carl", type: "person" }],
       priorEvents: [],
+      aliasesById: { carl: ["the Crawler"] },
     });
     expect(out.chapters.map((c) => c.label)).toEqual(["Prologue", "C1"]);
     expect(out.chapters[0]!.entities.map((e) => e.id)).toEqual(["carl"]);

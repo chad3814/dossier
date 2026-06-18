@@ -17,6 +17,7 @@ interface RedescribeInput {
   chapterMap: Map<string, Array<{ id: string; anchor: string }>>;
   index: Array<{ id: string; canonicalName: string; type: EntityType }>;
   priorEvents: DescriptionEvent[];
+  aliasesById: Record<string, string[]>;
 }
 
 interface RedescribeConstants {
@@ -27,6 +28,7 @@ interface RedescribeConstants {
     entities: Array<{ id: string; anchor: string; canonicalName: string; type: EntityType }>;
   }>;
   seed: Record<string, { description: string; significance: string }>;
+  aliasesById: Record<string, string[]>;
 }
 
 /**
@@ -56,7 +58,7 @@ export function buildRedescribeConstants(input: RedescribeInput): RedescribeCons
   const seed: Record<string, { description: string; significance: string }> = {};
   for (const [id, ev] of latest) seed[id] = { description: ev.description, significance: ev.significance };
 
-  return { bookNumber: input.bookNumber, chapters, seed };
+  return { bookNumber: input.bookNumber, chapters, seed, aliasesById: input.aliasesById };
 }
 
 const START = "// ===== per-book constants";
@@ -96,12 +98,14 @@ function main(): void {
     priorEvents = [];
   }
 
+  const aliasesById = Object.fromEntries(deltas.flatMap((d) => d.newEntities).map((e) => [e.id, e.aliases]));
   const constants = buildRedescribeConstants({
     bookNumber,
     manifestSections: manifest.sections.map((s) => ({ label: s.label, file: s.file })),
     chapterMap: chapterEntities(deltas),
     index,
     priorEvents,
+    aliasesById,
   });
 
   const sectionDir = join(repoRoot, "data", `book${bookNumber}`, "sections");
@@ -111,6 +115,7 @@ function main(): void {
     `const sectionDir = ${JSON.stringify(sectionDir)};`,
     `const chapters = ${JSON.stringify(constants.chapters)};`,
     `const seed = ${JSON.stringify(constants.seed)};`,
+    `const aliasesById = ${JSON.stringify(constants.aliasesById)};`,
     END,
   ].join("\n");
 
