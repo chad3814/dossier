@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildRedescribeConstants } from "../src/gen-redescribe.js";
-import { validateDescriptions } from "../src/validate-descriptions.js";
-import type { DescriptionEvent, Registry, RegistryEntity } from "../src/types.js";
+import { reconcileAliases } from "../src/reconcile-aliases.js";
+import { validateAliases, validateDescriptions } from "../src/validate-descriptions.js";
+import type { AliasEvent, DescriptionEvent, Registry, RegistryEntity } from "../src/types.js";
 
 function mk(p: Partial<RegistryEntity> & { id: string; canonicalName: string }): RegistryEntity {
   return {
@@ -42,6 +43,46 @@ describe("validateDescriptions", () => {
   it("warns on missing coverage only when requested", () => {
     expect(validateDescriptions(reg, [], {}).warnings).toEqual([]);
     expect(validateDescriptions(reg, [], { requireCoverage: true }).warnings.some((w) => /carl/.test(w))).toBe(true);
+  });
+});
+
+describe("reconcileAliases", () => {
+  it("adds a registry alias never matched in text at the entity's last appearance", () => {
+    const r: Registry = {
+      booksProcessed: [1],
+      entities: [mk({ id: "carl", canonicalName: "Carl", aliases: ["the Crawler", "Crawler #4,122"], appearances: ["B1·C1·¶1", "B3·C9·¶2"] })],
+    };
+    const events: AliasEvent[] = [{ id: "carl", anchor: "B1·C2·¶3", alias: "the Crawler" }];
+    const out = reconcileAliases(r, events);
+    expect(out.length).toBe(2);
+    expect(out.find((e) => e.alias === "Crawler #4,122")!.anchor).toBe("B3·C9·¶2");
+  });
+
+  it("leaves an already-matched alias untouched (no duplicate)", () => {
+    const r: Registry = {
+      booksProcessed: [1],
+      entities: [mk({ id: "carl", canonicalName: "Carl", aliases: ["the Crawler"], appearances: ["B1·C1·¶1"] })],
+    };
+    const out = reconcileAliases(r, [{ id: "carl", anchor: "B1·C1·¶1", alias: "the Crawler" }]);
+    expect(out.length).toBe(1);
+  });
+});
+
+describe("validateAliases", () => {
+  const reg2: Registry = {
+    booksProcessed: [1],
+    entities: [mk({ id: "carl", canonicalName: "Carl", appearances: ["B1·C1·¶1"] })],
+  };
+  it("flags unknown ids and out-of-order events", () => {
+    expect(validateAliases(reg2, [{ id: "ghost", anchor: "B1·C1·¶1", alias: "x" }]).errors.some((e) => /ghost/.test(e))).toBe(true);
+    const ooo: AliasEvent[] = [
+      { id: "carl", anchor: "B3·C1·¶1", alias: "b" },
+      { id: "carl", anchor: "B1·C1·¶1", alias: "a" },
+    ];
+    expect(validateAliases(reg2, ooo).errors.some((e) => /order/i.test(e))).toBe(true);
+  });
+  it("passes for ordered events with known ids", () => {
+    expect(validateAliases(reg2, [{ id: "carl", anchor: "B1·C1·¶1", alias: "a" }]).errors).toEqual([]);
   });
 });
 

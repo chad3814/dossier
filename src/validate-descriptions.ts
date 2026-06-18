@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { anchorSortKey, normalizeAnchor } from "./registry.js";
-import type { DescriptionEvent, Registry } from "./types.js";
+import type { AliasEvent, DescriptionEvent, Registry } from "./types.js";
 
 function cmp(a: string, b: string): number {
   const ka = anchorSortKey(a);
@@ -60,16 +60,55 @@ export function validateDescriptions(
   return { errors, warnings };
 }
 
+/** Structural checks on an alias-event log: known ids, per-entity non-decreasing anchor order. */
+export function validateAliases(registry: Registry, events: AliasEvent[]): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const byId = new Map(registry.entities.map((e) => [e.id, e]));
+  const grouped = new Map<string, AliasEvent[]>();
+  for (const ev of events) {
+    if (!byId.has(ev.id)) {
+      errors.push(`unknown entity id "${ev.id}" in alias event @ ${ev.anchor}`);
+      continue;
+    }
+    const list = grouped.get(ev.id) ?? [];
+    list.push(ev);
+    grouped.set(ev.id, list);
+  }
+  for (const [id, evs] of grouped) {
+    for (let i = 1; i < evs.length; i++) {
+      if (cmp(normalizeAnchor(evs[i]!.anchor), normalizeAnchor(evs[i - 1]!.anchor)) < 0) {
+        errors.push(`"${id}": alias events out of anchor order (${evs[i - 1]!.anchor} then ${evs[i]!.anchor})`);
+      }
+    }
+  }
+  return { errors, warnings: [] };
+}
+
 function main(): void {
   const here = dirname(fileURLToPath(import.meta.url));
   const seriesDir = join(here, "..", "..", "dcc");
-  const events = JSON.parse(readFileSync(join(seriesDir, "log", "descriptions.json"), "utf8")) as DescriptionEvent[];
+  const logDir = join(seriesDir, "log");
   const registry = JSON.parse(readFileSync(join(seriesDir, "output", "registry.json"), "utf8")) as Registry;
-  const { errors, warnings } = validateDescriptions(registry, events);
-  for (const w of warnings) console.warn(`warn: ${w}`);
-  for (const e of errors) console.error(`error: ${e}`);
-  console.log(`validate-descriptions: ${events.length} events, ${errors.length} errors, ${warnings.length} warnings`);
-  if (errors.length > 0) process.exit(1);
+
+  const descEvents = JSON.parse(readFileSync(join(logDir, "descriptions.json"), "utf8")) as DescriptionEvent[];
+  const desc = validateDescriptions(registry, descEvents);
+
+  let aliasCount = 0;
+  let alias: { errors: string[]; warnings: string[] } = { errors: [], warnings: [] };
+  const aliasPath = join(logDir, "aliases.json");
+  if (existsSync(aliasPath)) {
+    const aliasEvents = JSON.parse(readFileSync(aliasPath, "utf8")) as AliasEvent[];
+    aliasCount = aliasEvents.length;
+    alias = validateAliases(registry, aliasEvents);
+  }
+
+  for (const w of [...desc.warnings, ...alias.warnings]) console.warn(`warn: ${w}`);
+  for (const e of [...desc.errors, ...alias.errors]) console.error(`error: ${e}`);
+  console.log(
+    `validate: ${descEvents.length} description events (${desc.errors.length} err), ` +
+      `${aliasCount} alias events (${alias.errors.length} err)`,
+  );
+  if (desc.errors.length + alias.errors.length > 0) process.exit(1);
 }
 
 const invokedDirectly = process.argv[1] === fileURLToPath(import.meta.url);

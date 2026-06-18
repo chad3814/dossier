@@ -34,6 +34,7 @@ describe.skipIf(!hasData)("DCC log reproduction", () => {
       const clone: Record<string, unknown> = { ...e };
       delete clone.description;
       delete clone.significance;
+      delete clone.aliases; // Phase 2.5 regenerates aliases as versioned events
       return clone;
     };
     expect(full.booksProcessed).toEqual(registry.booksProcessed);
