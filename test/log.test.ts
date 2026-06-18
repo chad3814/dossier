@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { chapterEntities, materialize, withinCutoff } from "../src/log.js";
-import type { DescriptionEvent, RegistryDelta } from "../src/types.js";
+import type { AliasEvent, DescriptionEvent, RegistryDelta } from "../src/types.js";
 
 describe("withinCutoff", () => {
   it("returns true for every anchor when no cutoff is given", () => {
@@ -121,7 +121,7 @@ describe("materialize", () => {
   });
 });
 
-describe("materialize description overlay", () => {
+describe("materialize description overlay (processed-keyed)", () => {
   const descs: DescriptionEvent[] = [
     { id: "carl", anchor: "B1·C1·¶1", description: "A man.", significance: "minor" },
     { id: "carl", anchor: "B3·C1·¶10", description: "A seasoned crawler.", significance: "major" },
@@ -136,12 +136,41 @@ describe("materialize description overlay", () => {
     expect(carl.significance).toBe("major");
   });
 
-  it("falls back to the entity's blob description when no event <= cutoff", () => {
+  it("a PROCESSED entity with no version <= cutoff shows empty, not the blob", () => {
     const reg = materialize(deltas, mergeMap, {
       upTo: "B1·C99",
       descriptions: [{ id: "carl", anchor: "B5·C1·¶1", description: "late", significance: "major" }],
     });
+    expect(reg.entities.find((e) => e.id === "carl")!.description).toBe("");
+  });
+
+  it("an UNPROCESSED entity keeps its blob description", () => {
+    const reg = materialize(deltas, mergeMap, {
+      descriptions: [{ id: "not-an-entity", anchor: "B1·C1·¶1", description: "x", significance: "minor" }],
+    });
     expect(reg.entities.find((e) => e.id === "carl")!.description).toBe("A crawler.");
+  });
+});
+
+describe("materialize alias overlay (processed-keyed)", () => {
+  const aliasEvents: AliasEvent[] = [
+    { id: "carl", anchor: "B1·C2·¶3", alias: "Crawler #4,122" },
+    { id: "carl", anchor: "B3·C1·¶10", alias: "Royal Bodyguard" },
+  ];
+
+  it("shows only aliases whose event is <= cutoff for a processed entity", () => {
+    const at1 = materialize(deltas, mergeMap, { upTo: "B1·C1·¶999", aliases: aliasEvents });
+    expect(at1.entities.find((e) => e.id === "carl")!.aliases).toEqual([]);
+    const at2 = materialize(deltas, mergeMap, { upTo: "B2·C99", aliases: aliasEvents });
+    expect(at2.entities.find((e) => e.id === "carl")!.aliases).toEqual(["Crawler #4,122"]);
+    const full = materialize(deltas, mergeMap, { aliases: aliasEvents });
+    expect(full.entities.find((e) => e.id === "carl")!.aliases).toEqual(expect.arrayContaining(["Crawler #4,122", "Royal Bodyguard"]));
+  });
+
+  it("an UNPROCESSED entity keeps its blob aliases", () => {
+    const reg = materialize(deltas, mergeMap, { aliases: [{ id: "not-an-entity", anchor: "B1·C1·¶1", alias: "x" }] });
+    // carl's blob set = newEntity alias + the B3 matched alias, untouched (carl unprocessed).
+    expect(reg.entities.find((e) => e.id === "carl")!.aliases).toEqual(["the Crawler", "Crawler #4,122"]);
   });
 });
 

@@ -140,3 +140,10 @@ export interface DescriptionEvent {
   description: string;
   significance: Significance;
 }
+
+/** An alias that first becomes known at `anchor` (Phase 2.5). */
+export interface AliasEvent {
+  id: string;
+  anchor: string;
+  alias: string;
+}
