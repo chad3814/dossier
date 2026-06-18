@@ -124,7 +124,8 @@ describe("buildRedescribeConstants", () => {
       ],
       aliasesById: { carl: ["the Crawler", "Crawler #4,122"] },
     });
-    expect(out.chapters[0]!.entities[0]).toMatchObject({ id: "carl", anchor: "B2·C1·¶3", canonicalName: "Carl", type: "person" });
+    expect(out.chapters[0]!.entities[0]).toEqual({ id: "carl", anchor: "B2·C1·¶3" });
+    expect(out.entityMeta.carl).toEqual({ canonicalName: "Carl", type: "person" });
     expect(out.seed.carl).toEqual({ description: "later", significance: "supporting" });
     expect(out.aliasesById.carl).toEqual(["the Crawler", "Crawler #4,122"]);
   });

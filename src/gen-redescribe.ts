@@ -26,8 +26,9 @@ interface RedescribeConstants {
   chapters: Array<{
     file: string;
     label: string;
-    entities: Array<{ id: string; anchor: string; canonicalName: string; type: EntityType }>;
+    entities: Array<{ id: string; anchor: string }>;
   }>;
+  entityMeta: Record<string, { canonicalName: string; type: EntityType }>;
   seed: Record<string, { description: string; significance: string }>;
   aliasesById: Record<string, string[]>;
 }
@@ -43,31 +44,38 @@ export function buildRedescribeConstants(input: RedescribeInput): RedescribeCons
   const chapters = input.manifestSections.map((s) => {
     const key = `B${input.bookNumber}·${s.label}`;
     const entities = (input.chapterMap.get(key) ?? [])
-      .map((e) => {
-        const meta = metaById.get(e.id);
-        return meta ? { id: e.id, anchor: e.anchor, canonicalName: meta.canonicalName, type: meta.type } : null;
-      })
-      .filter((e): e is { id: string; anchor: string; canonicalName: string; type: EntityType } => e !== null);
+      .filter((e) => metaById.has(e.id))
+      .map((e) => ({ id: e.id, anchor: e.anchor }));
     return { file: s.file, label: s.label, entities };
   });
 
-  // Scope seed + aliasesById to entities that actually appear in this book — the workflow
-  // never reads others, and injecting all of them blows the Workflow script-size limit.
+  // Scope everything to entities that actually appear in this book — the workflow never reads
+  // others, and injecting all of them blows the Workflow script-size limit. Entity metadata is
+  // injected once as a map (not repeated per appearance) for the same reason.
   const appearing = new Set<string>();
   for (const c of chapters) for (const e of c.entities) appearing.add(e.id);
+
+  const entityMeta: Record<string, { canonicalName: string; type: EntityType }> = {};
+  for (const id of appearing) {
+    const m = metaById.get(id);
+    if (m) entityMeta[id] = { canonicalName: m.canonicalName, type: m.type };
+  }
 
   const latest = new Map<string, DescriptionEvent>();
   for (const ev of input.priorEvents) {
     const cur = latest.get(ev.id);
     if (!cur || cmp(normalizeAnchor(ev.anchor), normalizeAnchor(cur.anchor)) > 0) latest.set(ev.id, ev);
   }
+  // Seed carries the prior description only as CONTEXT (so the agent can judge material change);
+  // truncate it to keep the injected workflow script under the harness size limit. The emitted
+  // descriptions are full — only this context copy is shortened.
   const seed: Record<string, { description: string; significance: string }> = {};
-  for (const [id, ev] of latest) if (appearing.has(id)) seed[id] = { description: ev.description, significance: ev.significance };
+  for (const [id, ev] of latest) if (appearing.has(id)) seed[id] = { description: ev.description.slice(0, 400), significance: ev.significance };
 
   const aliasesById: Record<string, string[]> = {};
   for (const id of appearing) if (input.aliasesById[id]) aliasesById[id] = input.aliasesById[id];
 
-  return { bookNumber: input.bookNumber, chapters, seed, aliasesById };
+  return { bookNumber: input.bookNumber, chapters, entityMeta, seed, aliasesById };
 }
 
 const START = "// ===== per-book constants";
@@ -125,6 +133,7 @@ function main(): void {
     `const bookNumber = ${bookNumber};`,
     `const sectionDir = ${JSON.stringify(sectionDir)};`,
     `const chapters = ${JSON.stringify(constants.chapters)};`,
+    `const entityMeta = ${JSON.stringify(constants.entityMeta)};`,
     `const seed = ${JSON.stringify(constants.seed)};`,
     `const aliasesById = ${JSON.stringify(constants.aliasesById)};`,
     END,
