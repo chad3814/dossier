@@ -51,15 +51,23 @@ export function buildRedescribeConstants(input: RedescribeInput): RedescribeCons
     return { file: s.file, label: s.label, entities };
   });
 
+  // Scope seed + aliasesById to entities that actually appear in this book — the workflow
+  // never reads others, and injecting all of them blows the Workflow script-size limit.
+  const appearing = new Set<string>();
+  for (const c of chapters) for (const e of c.entities) appearing.add(e.id);
+
   const latest = new Map<string, DescriptionEvent>();
   for (const ev of input.priorEvents) {
     const cur = latest.get(ev.id);
     if (!cur || cmp(normalizeAnchor(ev.anchor), normalizeAnchor(cur.anchor)) > 0) latest.set(ev.id, ev);
   }
   const seed: Record<string, { description: string; significance: string }> = {};
-  for (const [id, ev] of latest) seed[id] = { description: ev.description, significance: ev.significance };
+  for (const [id, ev] of latest) if (appearing.has(id)) seed[id] = { description: ev.description, significance: ev.significance };
 
-  return { bookNumber: input.bookNumber, chapters, seed, aliasesById: input.aliasesById };
+  const aliasesById: Record<string, string[]> = {};
+  for (const id of appearing) if (input.aliasesById[id]) aliasesById[id] = input.aliasesById[id];
+
+  return { bookNumber: input.bookNumber, chapters, seed, aliasesById };
 }
 
 const START = "// ===== per-book constants";
