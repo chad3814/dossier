@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { groupAnchors, renderMarkdown } from "../src/render.js";
+import { earliestAppearance, groupAnchors, renderMarkdown } from "../src/render.js";
+import { buildSectionOrder } from "../src/registry.js";
 import type { Registry } from "../src/types.js";
+
+describe("earliestAppearance uses spine order", () => {
+  it("picks the section that comes first in the manifest, not the label heuristic", () => {
+    const order = buildSectionOrder([{ number: 8, sections: ["Interlude", "C1", "Interlude-2", "C2"] }]);
+    // Interlude-2 (spine idx 2) precedes C2 (idx 3) even though heuristic would rank C2 earlier.
+    expect(earliestAppearance(["B8·C2·¶1", "B8·Interlude-2·¶1"], order)).toBe("B8·Interlude-2·¶1");
+  });
+});
 
 describe("groupAnchors", () => {
   it("collapses consecutive anchors per section, grouped by book", () => {

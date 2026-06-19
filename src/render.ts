@@ -1,7 +1,17 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { anchorSortKey, buildSectionOrder, type SectionOrder } from "./registry.js";
 import type { EntityType, Registry, RegistryEntity } from "./types.js";
+
+/** The earliest anchor by true reading order (spine when available, else heuristic). */
+export function earliestAppearance(anchors: string[], order?: SectionOrder): string | undefined {
+  return [...anchors].sort((a, b) => {
+    const ka = anchorSortKey(a, order);
+    const kb = anchorSortKey(b, order);
+    return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
+  })[0];
+}
 
 const TYPE_LABEL: Record<EntityType, string> = {
   person: "Person",
@@ -48,7 +58,7 @@ function slug(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function renderEntity(e: RegistryEntity): string {
+function renderEntity(e: RegistryEntity, order?: SectionOrder): string {
   const lines: string[] = [];
   lines.push(`### ${e.canonicalName}`);
   const meta = [
@@ -60,15 +70,32 @@ function renderEntity(e: RegistryEntity): string {
   lines.push(meta.join(" · "));
   if (e.aliases.length > 0) lines.push(`**Also known as:** ${e.aliases.join(", ")}`);
   if (e.description) lines.push(e.description);
-  if (e.firstAppearance) {
+
+  // Derive the displayed first appearance from the true reading order.
+  const firstAnchor = earliestAppearance(e.appearances, order);
+  if (firstAnchor) {
+    const snippet =
+      firstAnchor === e.firstAppearance?.anchor ? (e.firstAppearance.snippet ?? "") : "";
+    lines.push(`**First appears:** \`${firstAnchor}\` — "${snippet}"`);
+  } else if (e.firstAppearance) {
     lines.push(`**First appears:** \`${e.firstAppearance.anchor}\` — "${e.firstAppearance.snippet}"`);
   }
-  if (e.appearances.length > 0) lines.push(`**Appears:** ${groupAnchors(e.appearances)}`);
+
+  if (e.appearances.length > 0) {
+    // Sort a local copy into reading order; do not mutate the stored array.
+    const sorted = [...e.appearances].sort((a, b) => {
+      const ka = anchorSortKey(a, order);
+      const kb = anchorSortKey(b, order);
+      return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
+    });
+    lines.push(`**Appears:** ${groupAnchors(sorted)}`);
+  }
   return lines.join("\n\n");
 }
 
 /** Render the full Markdown compendium from the cross-book registry. */
 export function renderMarkdown(registry: Registry): string {
+  const order = buildSectionOrder(registry.books);
   const books = registry.booksProcessed.join(", ");
   const entities = [...registry.entities].sort((a, b) => {
     const sig = SIGNIFICANCE_ORDER.indexOf(a.significance) - SIGNIFICANCE_ORDER.indexOf(b.significance);
@@ -106,7 +133,7 @@ export function renderMarkdown(registry: Registry): string {
   );
 
   out.push("## Characters");
-  for (const e of entities) out.push(renderEntity(e));
+  for (const e of entities) out.push(renderEntity(e, order));
 
   return out.join("\n\n") + "\n";
 }
