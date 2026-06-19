@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { materialize } from "../src/log.js";
+import { registryReproEquals } from "../src/migrate-to-log.js";
 import { synthesizeLog } from "../src/synthesize.js";
 import type { Registry } from "../src/types.js";
 
@@ -20,6 +21,14 @@ function stable(value: unknown): unknown {
   }
   return value;
 }
+
+describe("registryReproEquals ignores books", () => {
+  it("treats two registries as equal when they differ only by the books field", () => {
+    const a = { booksProcessed: [1], entities: [], books: [{ number: 1, sections: ["C1"] }] };
+    const b = { booksProcessed: [1], entities: [] };
+    expect(registryReproEquals(a, b)).toBe(true);
+  });
+});
 
 // Guarded: only runs where the DCC data is present (so dossier stays independently testable).
 describe.skipIf(!hasData)("DCC log reproduction", () => {

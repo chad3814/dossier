@@ -16,6 +16,12 @@ function stable(value: unknown): unknown {
   return value;
 }
 
+/** Reproduction equality on the entity-bearing fields only (books is manifest-derived metadata). */
+export function registryReproEquals(a: Registry, b: Registry): boolean {
+  const strip = (r: Registry) => ({ booksProcessed: r.booksProcessed, entities: r.entities });
+  return JSON.stringify(stable(strip(a))) === JSON.stringify(stable(strip(b)));
+}
+
 /**
  * Derive the position-gated event log from the committed registry and persist it
  * under `<series>/log/`, then verify that materializing the written log
@@ -45,7 +51,7 @@ function main(): void {
   const files = readdirSync(logDir).filter((f) => /^delta-book\d+\.json$/.test(f));
   const deltas = files.map((f) => JSON.parse(readFileSync(join(logDir, f), "utf8")) as RegistryDelta);
   const full = materialize(deltas);
-  if (JSON.stringify(stable(full)) !== JSON.stringify(stable(registry))) {
+  if (!registryReproEquals(full, registry)) {
     console.error(
       `migrate-to-log: FAILED reproduction — materialize(log) != registry.json ` +
         `(${full.entities.length} vs ${registry.entities.length} entities).`,
@@ -75,4 +81,5 @@ function main(): void {
   );
 }
 
-main();
+const invokedDirectly = process.argv[1] === fileURLToPath(import.meta.url);
+if (invokedDirectly) main();
