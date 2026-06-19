@@ -14,3 +14,22 @@ describe("buildBooksField", () => {
     ]);
   });
 });
+
+describe("buildBooksField titles", () => {
+  const registry = { booksProcessed: [1, 2], entities: [] } as Registry;
+  const manifestFor = () => ({ sections: [{ label: "C1" }] });
+
+  it("merges a title from titleFor when present", () => {
+    const titleFor = (b: number) => (b === 2 ? "Carl's Doomsday Scenario" : undefined);
+    const out = buildBooksField(registry, manifestFor, titleFor);
+    expect(out[1]).toEqual({ number: 2, title: "Carl's Doomsday Scenario", sections: ["C1"] });
+  });
+
+  it("omits title when titleFor is absent or returns undefined", () => {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    expect(buildBooksField(registry, manifestFor)[0]!).toEqual({ number: 1, sections: ["C1"] });
+    const out = buildBooksField(registry, manifestFor, () => undefined);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    expect("title" in out[0]!).toBe(false);
+  });
+});

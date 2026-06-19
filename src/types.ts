@@ -72,6 +72,7 @@ export interface RegistryEntity {
 /** Per-book section labels in spine (reading) order, derived from the manifests. */
 export interface BookSections {
   number: number;
+  title?: string;
   sections: string[];
 }
 
