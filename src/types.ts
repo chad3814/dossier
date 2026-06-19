@@ -69,11 +69,19 @@ export interface RegistryEntity {
   appearances: string[];
 }
 
+/** Per-book section labels in spine (reading) order, derived from the manifests. */
+export interface BookSections {
+  number: number;
+  sections: string[];
+}
+
 /** The cross-book registry accumulated as books are processed in order. */
 export interface Registry {
   /** Books fully folded in, in order. */
   booksProcessed: number[];
   entities: RegistryEntity[];
+  /** Ordered section labels per book (manifest-derived metadata; not part of the log). */
+  books?: BookSections[];
 }
 
 /** Compact entry handed to chapter agents so they can match against known entities. */

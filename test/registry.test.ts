@@ -7,6 +7,8 @@ import {
   normalizeName,
   resolveGroup,
   toIndex,
+  anchorSortKey,
+  buildSectionOrder,
 } from "../src/registry.js";
 import type { ChapterFindings, Registry, RegistryDelta, RegistryEntity } from "../src/types.js";
 
@@ -212,5 +214,28 @@ describe("resolveGroup", () => {
     expect(r.significance).toBe("supporting");
     expect(r.description).toBe("a much longer description");
     expect(r.appearances).toEqual(["B3·C1·¶1", "B3·C2·¶2", "B8·C5·¶9"]);
+  });
+});
+
+describe("anchorSortKey with SectionOrder", () => {
+  const order = buildSectionOrder([
+    { number: 8, sections: ["Epigraph", "Interlude", "C1", "Interlude-2", "C2", "Epilogue"] },
+  ]);
+
+  it("orders an interlude between its surrounding chapters via the index", () => {
+    const c1 = anchorSortKey("B8·C1·¶1", order);
+    const inter2 = anchorSortKey("B8·Interlude-2·¶1", order);
+    const c2 = anchorSortKey("B8·C2·¶1", order);
+    expect(c1[1]).toBeLessThan(inter2[1]);
+    expect(inter2[1]).toBeLessThan(c2[1]);
+  });
+
+  it("falls back to the label heuristic when no order is given", () => {
+    expect(anchorSortKey("B8·C2·¶1")[1]).toBe(2); // C<n> heuristic = n
+    expect(anchorSortKey("B8·Interlude·¶1")[1]).toBe(-2); // unchanged heuristic
+  });
+
+  it("falls back for a label not present in the index", () => {
+    expect(anchorSortKey("B8·Sec999·¶1", order)[1]).toBe(10999); // heuristic Sec
   });
 });

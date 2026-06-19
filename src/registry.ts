@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  BookSections,
   ChapterFindings,
   EntityTag,
   Registry,
@@ -193,33 +194,42 @@ export function cleanAliases(canonicalName: string, aliases: string[]): string[]
   return out;
 }
 
+export interface SectionOrder {
+  ordinal(book: number, label: string): number | undefined;
+}
+
+export function buildSectionOrder(books?: BookSections[]): SectionOrder {
+  const map = new Map<string, number>();
+  for (const b of books ?? []) {
+    b.sections.forEach((label, i) => map.set(`${b.number}·${label}`, i));
+  }
+  return { ordinal: (book, label) => map.get(`${book}·${label}`) };
+}
+
+/** Heuristic section order from the label alone (fallback when no manifest order is known). */
+function heuristicSectionOrder(label: string): number {
+  if (/^C\d+$/i.test(label)) return Number.parseInt(label.slice(1), 10);
+  if (/^Part\d+$/i.test(label)) return -1;
+  const special: Record<string, number> = { epigraph: -4, prologue: -3, interlude: -2, epilogue: 9000 };
+  return special[label.toLowerCase()] ??
+    (/^Sec\d+/i.test(label) ? 10000 + (Number.parseInt(label.replace(/\D/g, ""), 10) || 0) : 8000);
+}
+
 /** Sort key for a `B<book>·<label>·¶<n>` anchor, putting anchors in reading order. */
-export function anchorSortKey(anchor: string): [number, number, number] {
+export function anchorSortKey(anchor: string, order?: SectionOrder): [number, number, number] {
   const parts = anchor.split("·");
   const book = Number.parseInt((parts[0] ?? "").replace(/\D/g, ""), 10) || 0;
   const label = parts[1] ?? "";
   const para = Number.parseInt((parts[2] ?? "").replace(/\D/g, ""), 10) || 0;
-  let order: number;
-  if (/^C\d+$/i.test(label)) order = Number.parseInt(label.slice(1), 10);
-  else if (/^Part\d+$/i.test(label)) order = -1;
-  else {
-    const special: Record<string, number> = {
-      epigraph: -4,
-      prologue: -3,
-      interlude: -2,
-      epilogue: 9000,
-    };
-    order = special[label.toLowerCase()] ??
-      (/^Sec\d+/i.test(label) ? 10000 + (Number.parseInt(label.replace(/\D/g, ""), 10) || 0) : 8000);
-  }
-  return [book, order, para];
+  const sec = order?.ordinal(book, label) ?? heuristicSectionOrder(label);
+  return [book, sec, para];
 }
 
 /** Normalize, de-duplicate, and sort anchors into reading order. */
-function cleanAnchors(anchors: string[]): string[] {
+function cleanAnchors(anchors: string[], order?: SectionOrder): string[] {
   return [...new Set(anchors.map(normalizeAnchor))].sort((a, b) => {
-    const ka = anchorSortKey(a);
-    const kb = anchorSortKey(b);
+    const ka = anchorSortKey(a, order);
+    const kb = anchorSortKey(b, order);
     return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
   });
 }
