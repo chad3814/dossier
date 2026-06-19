@@ -16,6 +16,7 @@
     "reconcile-aliases": "tsx src/reconcile-aliases.ts",
     "crawler-numbers": "tsx src/crawler-numbers.ts",
     "gen-workflow": "tsx src/gen-workflow.ts",
+    "gen-structure": "tsx src/gen-structure.ts",
     "lookup": "tsx src/registry.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
