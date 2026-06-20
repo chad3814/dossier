@@ -2,7 +2,7 @@ import { copyFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } fro
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chapterEntities } from "./log.js";
-import { isNoiseAlias } from "./reconcile-aliases.js";
+import { isNoiseAlias } from "./alias-clean.js";
 import { anchorSortKey, normalizeAnchor } from "./registry.js";
 import type { BookManifest, DescriptionEvent, EntityType, RegistryDelta } from "./types.js";
 
