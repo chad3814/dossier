@@ -57,6 +57,70 @@ describe("applyCorrections", () => {
     expect(twice).toEqual(once);
   });
 
+  it("renameIds changes the entity id and remaps alias + description events", () => {
+    const { registry, aliases, descriptions } = fixture();
+    const out = applyCorrections({
+      registry,
+      aliases,
+      descriptions,
+      corrections: { renameIds: [{ from: "sexy", to: "sexy-canonical" }] },
+    });
+    const byId = Object.fromEntries(out.registry.entities.map((e) => [e.id, e]));
+    // old id gone, new id present
+    expect(byId["sexy"]).toBeUndefined();
+    expect(byId["sexy-canonical"]).toBeDefined();
+    // alias event remapped
+    expect(out.aliases.find((a) => a.alias === "Sexy Mum")?.id).toBe("sexy-canonical");
+    // description event remapped
+    expect(out.descriptions.find((d) => d.description === "a regal elf")?.id).toBe("sexy-canonical");
+  });
+
+  it("renameIds runs before dropAliases (post-rename id is honored by drop)", () => {
+    const { registry, aliases, descriptions } = fixture();
+    const out = applyCorrections({
+      registry,
+      aliases,
+      descriptions,
+      corrections: {
+        renameIds: [{ from: "sexy", to: "sexy-canonical" }],
+        // drop the alias event that was recorded under the NEW id
+        dropAliases: [{ id: "sexy-canonical", alias: "Sexy Mum" }],
+      },
+    });
+    // alias event for "Sexy Mum" must be absent (dropped after rename)
+    expect(out.aliases.find((a) => a.alias === "Sexy Mum")).toBeUndefined();
+  });
+
+  it("renameIds is idempotent (second run equals first)", () => {
+    const renameCorrections = { renameIds: [{ from: "sexy", to: "sexy-canonical" }] };
+    const once = applyCorrections({ ...fixture(), corrections: renameCorrections });
+    const twice = applyCorrections({
+      registry: once.registry,
+      aliases: once.aliases,
+      descriptions: once.descriptions,
+      corrections: renameCorrections,
+    });
+    expect(twice).toEqual(once);
+  });
+
+  it("renameIds skips the pair when the target id already exists (no rename, no clobber)", () => {
+    const { registry, aliases, descriptions } = fixture();
+    // "katia" and "tagg" both exist; renaming katia->tagg must be a no-op
+    const out = applyCorrections({
+      registry,
+      aliases,
+      descriptions,
+      corrections: { renameIds: [{ from: "katia", to: "tagg" }] },
+    });
+    const byId = Object.fromEntries(out.registry.entities.map((e) => [e.id, e]));
+    // Both entities must still be present and unchanged
+    expect(byId["katia"]).toBeDefined();
+    expect(byId["tagg"]).toBeDefined();
+    // tagg's canonicalName must not have changed to katia's
+    expect(byId["tagg"]!.canonicalName).toBe("Epitome Tagg");
+    expect(byId["katia"]!.canonicalName).toBe("Katia Grim");
+  });
+
   it("does not fold a possessive-of-into alias onto into during merge (idempotency guard)", () => {
     // `from` carries an alias that is a possessive of `into`'s canonicalName.
     // e.g. "Noflex" -> alias "Noflex’s pet" is a possessive of "Noflex".

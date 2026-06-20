@@ -6,6 +6,7 @@ import { normalizeName } from "./registry.js";
 import type { AliasEvent, DescriptionEvent, Registry, RegistryEntity } from "./types.js";
 
 export interface Corrections {
+  renameIds?: Array<{ from: string; to: string }>;
   dropAliases?: Array<{ id: string; alias: string }>;
   reassignAliases?: Array<{ from: string; to: string; alias: string }>;
   merges?: Array<{ from: string; into: string }>;
@@ -50,6 +51,8 @@ function addAliasIfAbsent(entity: RegistryEntity, alias: string): void {
  * Pure function: apply a corrections file to registry + event logs.
  *
  * Apply order:
+ *   0. renameIds: rename an entity's id in-place (entity id, alias events, description events).
+ *      Skipped if `from` does not exist (idempotent) or if `to` already exists (not a rename).
  *   1. Blob-clean: strip droppable aliases (noise, possessives) from every entity.
  *   2. dropAliases: remove named aliases from entity blob + alias events.
  *   3. reassignAliases: move alias from one entity's blob to another, rewrite alias events.
@@ -65,6 +68,33 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
   const byId = new Map<string, RegistryEntity>(
     registry.entities.map((e) => [e.id, e]),
   );
+
+  // Step 0: renameIds — rename entity ids before any other operation
+  for (const { from, to } of corrections.renameIds ?? []) {
+    // Idempotent: if `from` no longer exists, skip
+    if (!byId.has(from)) continue;
+    // Guard: if `to` already exists, this would be a merge — skip (use merges for that)
+    if (byId.has(to)) continue;
+
+    const entity = byId.get(from)!;
+    entity.id = to;
+    byId.delete(from);
+    byId.set(to, entity);
+
+    // Rewrite alias events
+    for (const ev of aliases) {
+      if (ev.id === from) {
+        ev.id = to;
+      }
+    }
+
+    // Rewrite description events
+    for (const ev of descriptions) {
+      if (ev.id === from) {
+        ev.id = to;
+      }
+    }
+  }
 
   // Step 1: blob-clean every entity
   for (const entity of registry.entities) {
