@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isDroppableAlias, isNoiseAlias } from "./alias-clean.js";
+import { isDroppableAlias } from "./alias-clean.js";
 import { anchorSortKey, normalizeAnchor, normalizeName } from "./registry.js";
 import type { AliasEvent, Registry, RegistryEntity } from "./types.js";
 
