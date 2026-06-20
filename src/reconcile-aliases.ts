@@ -1,9 +1,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isNoiseAlias } from "./alias-clean.js";
+import { isDroppableAlias, isNoiseAlias } from "./alias-clean.js";
 import { anchorSortKey, normalizeAnchor, normalizeName } from "./registry.js";
-import type { AliasEvent, Registry } from "./types.js";
+import type { AliasEvent, Registry, RegistryEntity } from "./types.js";
 
 export { isNoiseAlias } from "./alias-clean.js";
 
@@ -22,9 +22,12 @@ function cmp(a: string, b: string): number {
  */
 export function reconcileAliases(registry: Registry, events: AliasEvent[]): AliasEvent[] {
   // 1. drop noise + keep earliest per (id, normalized alias)
+  const byId = new Map<string, RegistryEntity>(registry.entities.map((e) => [e.id, e]));
   const earliest = new Map<string, AliasEvent>();
   for (const ev of events) {
-    if (isNoiseAlias(ev.alias)) continue;
+    const entity = byId.get(ev.id);
+    if (!entity) continue;
+    if (isDroppableAlias(ev.alias, entity)) continue;
     const key = `${ev.id} ${normalizeName(ev.alias)}`;
     const cur = earliest.get(key);
     if (!cur || cmp(normalizeAnchor(ev.anchor), normalizeAnchor(cur.anchor)) < 0) earliest.set(key, ev);
@@ -43,7 +46,7 @@ export function reconcileAliases(registry: Registry, events: AliasEvent[]): Alia
     const last = [...ent.appearances].map(normalizeAnchor).sort(cmp).pop();
     if (!last) continue;
     for (const alias of ent.aliases) {
-      if (isNoiseAlias(alias)) continue;
+      if (isDroppableAlias(alias, ent)) continue;
       const n = normalizeName(alias);
       if (seen.has(n)) continue;
       out.push({ id: ent.id, anchor: last, alias });
