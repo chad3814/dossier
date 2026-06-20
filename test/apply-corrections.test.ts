@@ -56,4 +56,36 @@ describe("applyCorrections", () => {
     const twice = applyCorrections({ registry: once.registry, aliases: once.aliases, descriptions: once.descriptions, corrections });
     expect(twice).toEqual(once);
   });
+
+  it("does not fold a possessive-of-into alias onto into during merge (idempotency guard)", () => {
+    // `from` carries an alias that is a possessive of `into`'s canonicalName.
+    // e.g. "Noflex" -> alias "Noflex’s pet" is a possessive of "Noflex".
+    // Step-1 blob-clean on a second run would strip it, so it must not be
+    // folded onto `into` in the first place.
+    const noflex = ent("noflex", "Noflex", [], ["B1·C3·¶1"]);
+    const sidekick = ent("sidekick", "Sidekick", ["Noflex’s pet"], ["B1·C5·¶1"]);
+    const mergeRegistry: Registry = { booksProcessed: [1], entities: [noflex, sidekick] };
+    const mergeCorrections = { merges: [{ from: "sidekick", into: "noflex" }] };
+
+    const once = applyCorrections({
+      registry: mergeRegistry,
+      aliases: [],
+      descriptions: [],
+      corrections: mergeCorrections,
+    });
+
+    const byId = Object.fromEntries(once.registry.entities.map((e) => [e.id, e]));
+
+    // (a) The possessive alias must NOT appear on `into`
+    expect(byId["noflex"]!.aliases).not.toContain("Noflex’s pet");
+
+    // (b) A second run must produce the same output (idempotency)
+    const twice = applyCorrections({
+      registry: once.registry,
+      aliases: once.aliases,
+      descriptions: once.descriptions,
+      corrections: mergeCorrections,
+    });
+    expect(twice).toEqual(once);
+  });
 });

@@ -118,13 +118,20 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
       }
     }
 
-    // Append aliases from `from` blob (deduped by normalizeName)
+    // Append aliases from `from` blob (deduped by normalizeName).
+    // Skip any alias that would be droppable with respect to `into`, so the
+    // merged result is consistent with Step-1 blob-clean and therefore idempotent.
     for (const a of fromEntity.aliases) {
-      addAliasIfAbsent(intoEntity, a);
+      if (!isDroppableAlias(a, intoEntity)) {
+        addAliasIfAbsent(intoEntity, a);
+      }
     }
 
-    // Add `from`'s canonicalName as an alias on `into` (deduped)
-    addAliasIfAbsent(intoEntity, fromEntity.canonicalName);
+    // Add `from`'s canonicalName as an alias on `into` (deduped), unless it is
+    // itself droppable with respect to `into` (same idempotency guard).
+    if (!isDroppableAlias(fromEntity.canonicalName, intoEntity)) {
+      addAliasIfAbsent(intoEntity, fromEntity.canonicalName);
+    }
 
     // Remap alias events: from -> into
     for (const ev of aliases) {
