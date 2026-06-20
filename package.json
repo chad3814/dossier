@@ -14,6 +14,7 @@
     "gen-redescribe": "tsx src/gen-redescribe.ts",
     "validate-descriptions": "tsx src/validate-descriptions.ts",
     "reconcile-aliases": "tsx src/reconcile-aliases.ts",
+    "apply-corrections": "tsx src/apply-corrections.ts",
     "crawler-numbers": "tsx src/crawler-numbers.ts",
     "gen-workflow": "tsx src/gen-workflow.ts",
     "gen-structure": "tsx src/gen-structure.ts",
