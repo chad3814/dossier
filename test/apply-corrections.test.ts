@@ -121,6 +121,26 @@ describe("applyCorrections", () => {
     expect(byId["katia"]!.canonicalName).toBe("Katia Grim");
   });
 
+  it("merge sorts interleaved appearances into canonical anchorSortKey order", () => {
+    // into: B1·C1·¶1, B3·C2·¶1  from: B2·C1·¶1
+    // append order would give B1·C1·¶1, B3·C2·¶1, B2·C1·¶1 — wrong
+    // canonical order: B1·C1·¶1, B2·C1·¶1, B3·C2·¶1
+    const intoEnt = ent("into-char", "Into Char", [], ["B1·C1·¶1", "B3·C2·¶1"]);
+    const fromEnt = ent("from-char", "From Char", [], ["B2·C1·¶1"]);
+    const mergeRegistry: Registry = { booksProcessed: [1], entities: [intoEnt, fromEnt] };
+    const mergeCorrections = { merges: [{ from: "from-char", into: "into-char" }] };
+
+    const out = applyCorrections({
+      registry: mergeRegistry,
+      aliases: [],
+      descriptions: [],
+      corrections: mergeCorrections,
+    });
+
+    const byId = Object.fromEntries(out.registry.entities.map((e) => [e.id, e]));
+    expect(byId["into-char"]!.appearances).toEqual(["B1·C1·¶1", "B2·C1·¶1", "B3·C2·¶1"]);
+  });
+
   it("does not fold a possessive-of-into alias onto into during merge (idempotency guard)", () => {
     // `from` carries an alias that is a possessive of `into`'s canonicalName.
     // e.g. "Noflex" -> alias "Noflex’s pet" is a possessive of "Noflex".

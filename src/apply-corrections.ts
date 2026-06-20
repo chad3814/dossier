@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDroppableAlias } from "./alias-clean.js";
-import { normalizeName } from "./registry.js";
+import { cleanAnchors, normalizeName } from "./registry.js";
 import type { AliasEvent, DescriptionEvent, Registry, RegistryEntity } from "./types.js";
 
 export interface Corrections {
@@ -141,12 +141,8 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
     // Idempotent: if `from` no longer exists, skip
     if (!fromEntity || !intoEntity) continue;
 
-    // Append appearances (deduped)
-    for (const ap of fromEntity.appearances) {
-      if (!intoEntity.appearances.includes(ap)) {
-        intoEntity.appearances.push(ap);
-      }
-    }
+    // Merge appearances: normalize, dedupe, and sort into canonical reading order.
+    intoEntity.appearances = cleanAnchors([...intoEntity.appearances, ...fromEntity.appearances]);
 
     // Append aliases from `from` blob (deduped by normalizeName).
     // Skip any alias that would be droppable with respect to `into`, so the

@@ -226,7 +226,7 @@ export function anchorSortKey(anchor: string, order?: SectionOrder): [number, nu
 }
 
 /** Normalize, de-duplicate, and sort anchors into reading order. */
-function cleanAnchors(anchors: string[], order?: SectionOrder): string[] {
+export function cleanAnchors(anchors: string[], order?: SectionOrder): string[] {
   return [...new Set(anchors.map(normalizeAnchor))].sort((a, b) => {
     const ka = anchorSortKey(a, order);
     const kb = anchorSortKey(b, order);
