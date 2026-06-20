@@ -14,7 +14,7 @@ const NOISE = new Set([
 
 /** Lowercase, strip apostrophes (straight + curly), collapse non-alphanumerics to spaces. */
 function norm(s: string): string {
-  return s.toLowerCase().replace(/[''']/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  return s.toLowerCase().replace(/[\u0027\u2018\u2019\u02BC]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 /** True for a bare stopword alias (a single pronoun/article/interrogative). */

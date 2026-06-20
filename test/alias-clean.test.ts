@@ -21,7 +21,14 @@ describe("isPossessiveOfName", () => {
   it("drops possessives of a short name form (bare and with object)", () => {
     expect(isPossessiveOfName("Katia's", forms)).toBe(true);
     expect(isPossessiveOfName("Katia's boyfriend", forms)).toBe(true);
-    expect(isPossessiveOfName("Donut's tiara", forms)).toBe(true); // curly apostrophe
+    expect(isPossessiveOfName("Donut's tiara", forms)).toBe(true);
+  });
+  it("drops possessives with curly right apostrophe U+2019", () => {
+    expect(isPossessiveOfName("Katia\u2019s friend", forms)).toBe(true);
+    expect(isPossessiveOfName("Donut\u2019s tiara", forms)).toBe(true);
+  });
+  it("drops possessives with curly left apostrophe U+2018", () => {
+    expect(isPossessiveOfName("Katia\u2018s friend", forms)).toBe(true);
   });
   it("does not drop epithets or non-possessives", () => {
     expect(isPossessiveOfName("Warlord Katia", forms)).toBe(false);
