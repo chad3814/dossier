@@ -172,4 +172,50 @@ describe("applyCorrections", () => {
     });
     expect(twice).toEqual(once);
   });
+
+  it("applies a dropAliases op whose id was already merged away, onto the merge target", () => {
+    // Replaying corrections.json against already-corrected data: `ghost` is gone (merged into
+    // `host` by an earlier run) and its aliases now live on `host`. A drop keyed to the old id
+    // must still take effect, or a deliberately-dropped alias silently comes back.
+    const registry: Registry = {
+      booksProcessed: [1],
+      entities: [ent("host", "Host", ["keeper", "crawler"], ["B1·C1·¶1", "B1·C2·¶1"])],
+    };
+    const corrections = {
+      dropAliases: [{ id: "ghost", alias: "crawler" }],
+      merges: [{ from: "ghost", into: "host" }],
+    };
+
+    const out = applyCorrections({ registry, aliases: [], descriptions: [], corrections });
+    const host = out.registry.entities.find((e) => e.id === "host");
+
+    expect(host?.aliases).toContain("keeper");
+    expect(host?.aliases).not.toContain("crawler");
+  });
+
+  it("applies a reassignAliases op whose endpoints were already merged away", () => {
+    const registry: Registry = {
+      booksProcessed: [1],
+      entities: [
+        ent("host", "Host", ["the visitor"], ["B1·C1·¶1"]),
+        ent("target", "Target", [], ["B1·C2·¶1"]),
+      ],
+    };
+    const corrections = {
+      reassignAliases: [{ from: "ghost", to: "target", alias: "the visitor" }],
+      merges: [{ from: "ghost", into: "host" }],
+    };
+
+    const out = applyCorrections({
+      registry,
+      aliases: [{ id: "ghost", anchor: "B1·C1·¶1", alias: "the visitor" }],
+      descriptions: [],
+      corrections,
+    });
+    const byId = Object.fromEntries(out.registry.entities.map((e) => [e.id, e]));
+
+    expect(byId["host"]!.aliases).not.toContain("the visitor");
+    expect(byId["target"]!.aliases).toContain("the visitor");
+    expect(out.aliases).toEqual([{ id: "target", anchor: "B1·C1·¶1", alias: "the visitor" }]);
+  });
 });

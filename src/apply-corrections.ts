@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDroppableAlias } from "./alias-clean.js";
+import { correctionIdMap, resolveHistoricalId } from "./id-history.js";
 import { cleanAnchors, normalizeName } from "./registry.js";
 import type { AliasEvent, DescriptionEvent, Registry, RegistryEntity } from "./types.js";
 
@@ -101,16 +102,26 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
     entity.aliases = entity.aliases.filter((a) => !isDroppableAlias(a, entity));
   }
 
+  // This file is replayed against data an earlier pass may already have reshaped, so an op's
+  // target id can name an entity that renameIds/merges has since folded away. Resolve each id
+  // forward to the entity that absorbed it; without this, a dropAliases keyed to a merged-away
+  // id silently no-ops and the dropped alias comes back on the merge target.
+  // Steps 2-3 never add or remove entities, so the current id set is computed once here.
+  const idMap = correctionIdMap(corrections);
+  const currentIds = new Set<string>(byId.keys());
+  const resolve = (id: string): string => resolveHistoricalId(id, currentIds, idMap) ?? id;
+
   // Step 2: drop aliases (blob + alias events)
   for (const { id, alias } of corrections.dropAliases ?? []) {
-    const entity = byId.get(id);
+    const resolvedId = resolve(id);
+    const entity = byId.get(resolvedId);
     if (entity) {
       entity.aliases = entity.aliases.filter((a) => !aliasMatches(a, alias));
     }
-    // Remove matching alias events
+    // Remove matching alias events, under the historical id or the resolved one
     for (let i = aliases.length - 1; i >= 0; i--) {
       const ev = aliases[i];
-      if (ev !== undefined && ev.id === id && aliasMatches(ev.alias, alias)) {
+      if (ev !== undefined && (ev.id === id || ev.id === resolvedId) && aliasMatches(ev.alias, alias)) {
         aliases.splice(i, 1);
       }
     }
@@ -118,8 +129,10 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
 
   // Step 3: reassign aliases (blob + alias events)
   for (const { from, to, alias } of corrections.reassignAliases ?? []) {
-    const fromEntity = byId.get(from);
-    const toEntity = byId.get(to);
+    const resolvedFrom = resolve(from);
+    const resolvedTo = resolve(to);
+    const fromEntity = byId.get(resolvedFrom);
+    const toEntity = byId.get(resolvedTo);
     if (fromEntity) {
       fromEntity.aliases = fromEntity.aliases.filter((a) => !aliasMatches(a, alias));
     }
@@ -128,8 +141,8 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
     }
     // Rewrite matching alias events: change id from -> to
     for (const ev of aliases) {
-      if (ev.id === from && aliasMatches(ev.alias, alias)) {
-        ev.id = to;
+      if ((ev.id === from || ev.id === resolvedFrom) && aliasMatches(ev.alias, alias)) {
+        ev.id = resolvedTo;
       }
     }
   }
