@@ -293,3 +293,22 @@ describe("makeLabelUniquer", () => {
     ]);
   });
 });
+
+describe("classifyEntry with separate title components (no TOC entry)", () => {
+  it("finds anchored front-matter terms in one component even when <title> is the book name", () => {
+    expect(classifyEntry("map", ["The Strength of the Few", "Map"], "").type).toBe("front");
+    expect(classifyEntry("map", ["The Strength of the Few", "Map of the Catenan Republic"], "").type).toBe("front");
+    expect(classifyEntry("toc", ["The Will of the Many", "Contents"], "").type).toBe("front");
+  });
+
+  it("still finds chapter and structural signals in any component", () => {
+    expect(classifyEntry("x", ["The Will of the Many", "Chapter VI"], "")).toEqual({ type: "chapter", number: 6 });
+    expect(classifyEntry("x", ["The Will of the Many", "Prologue"], "").type).toBe("prologue");
+    expect(classifyEntry("x", ["The Will of the Many", "Part Two"], "").type).toBe("part");
+  });
+
+  it("does not let an anchored term match across a component boundary", () => {
+    // A story section whose heading merely contains 'map' must not become front matter.
+    expect(classifyEntry("x", ["The Will of the Many", "The Mapmaker"], "Prose.").type).toBe("other");
+  });
+});

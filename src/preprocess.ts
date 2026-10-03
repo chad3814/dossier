@@ -34,29 +34,40 @@ export function romanToInt(s: string): number | null {
  */
 export function classifyEntry(
   idref: string,
-  title = "",
+  title: string | string[] = "",
   bodyStart = "",
 ): { type: EntryType; number: number | null } {
   const id = idref.toLowerCase();
-  const t = title.toLowerCase().trim();
+  // Title components (TOC entry, or <title> / h1 / h2 when there is none) are tested one at a
+  // time so anchored patterns such as ^map$ still fire when <title> carries the book's name.
+  const titles = (Array.isArray(title) ? title : [title]).map((s) => s.toLowerCase().trim()).filter((s) => s.length > 0);
+  const t = titles.join(" ");
   const numIn = (s: string): number | null => {
     const m = s.match(/(\d+)/);
     return m ? Number.parseInt(m[1] as string, 10) : null;
   };
+  const firstMatch = (re: RegExp): RegExpMatchArray | null => {
+    for (const x of titles) {
+      const m = x.match(re);
+      if (m) return m;
+    }
+    return null;
+  };
+  const anyTitle = (re: RegExp): boolean => titles.some((x) => re.test(x));
 
   // Chapter from the reliable signals (title text, then idref).
-  const chap = t.match(/chapter\s+(\d+)/) ?? id.match(/chapter[^0-9]*(\d+)/);
+  const chap = firstMatch(/chapter\s+(\d+)/) ?? id.match(/chapter[^0-9]*(\d+)/);
   if (chap) return { type: "chapter", number: Number.parseInt(chap[1] as string, 10) };
 
   // Roman-numeral chapter titles ("Chapter XXV").
-  const roman = t.match(/chapter\s+([ivxlcdm]+)\b/);
+  const roman = firstMatch(/chapter\s+([ivxlcdm]+)\b/);
   if (roman) {
     const n = romanToInt(roman[1] as string);
     if (n !== null) return { type: "chapter", number: n };
   }
 
   for (const type of ["prologue", "interlude", "epilogue", "epigraph"] as const) {
-    if (new RegExp(`\\b${type}\\b`, "i").test(t) || id.includes(type)) {
+    if (anyTitle(new RegExp(`\\b${type}\\b`, "i")) || id.includes(type)) {
       return { type, number: numIn(t) ?? numIn(id) };
     }
   }
@@ -64,13 +75,13 @@ export function classifyEntry(
   // Part dividers: titled "Part I/One/1", or a roman-numeral prefix like "I. Havana".
   // Match the word "part" in the idref only with separators, so filename-style
   // idrefs such as "part0008" are NOT treated as Part dividers.
-  if (/\bpart\b/i.test(t) || /^[ivxlcdm]+\.\s/i.test(t) || /[_-]part[_-]/.test(id)) {
+  if (anyTitle(/\bpart\b/i) || anyTitle(/^[ivxlcdm]+\.\s/i) || /[_-]part[_-]/.test(id)) {
     return { type: "part", number: numIn(t) ?? numIn(id) };
   }
 
   // Front-matter must be ruled out BEFORE the body-text fallback, since pages
   // like a Table of Contents open with the words "Chapter 1 Chapter 2 …".
-  if (FRONT_MATTER.test(t) || FRONT_MATTER.test(id)) return { type: "front", number: null };
+  if (anyTitle(FRONT_MATTER) || FRONT_MATTER.test(id)) return { type: "front", number: null };
 
   // A bare ch<digits> idref ("ch25") counts only once every title-based signal has had its say:
   // publishers number every body file this way, including prologues and front matter.
@@ -170,15 +181,15 @@ function extractTitle(xhtml: string): string {
   return "";
 }
 
-/** The <title> element text plus first heading — the most reliable classification signal. */
-function extractClassifierTitle(xhtml: string): string {
+/** The <title> element text and first headings, as separate components for classifyEntry. */
+function extractClassifierTitles(xhtml: string): string[] {
   const root = parse(xhtml);
   const parts: string[] = [];
   for (const sel of ["title", "h1", "h2"]) {
     const text = root.querySelector(sel)?.textContent.replace(/\s+/g, " ").trim();
     if (text) parts.push(text);
   }
-  return parts.join(" ");
+  return parts;
 }
 
 /** Render a chunk as annotated plain text with [B·label·¶n] markers for the extraction agents. */
@@ -234,7 +245,7 @@ export function planSection(
   entry: SpineEntry,
   spineIndex: number,
   title: string,
-  classifierTitle: string,
+  classifierTitle: string | string[],
   bodyStart: string,
   opts: PreprocessOptions,
 ): { include: false } | { include: true; type: EntryType; number: number | null; base: string } {
@@ -324,11 +335,11 @@ function buildSections(zip: AdmZip, seriesOpts: PreprocessOptions, bookNumber: n
     const paragraphs = extractParagraphs(xhtml);
     const bodyStart = paragraphs.slice(0, 2).join(" ").slice(0, 80);
     const tocTitle = tocTitleFor(entry.href);
-    const classifierTitle = tocTitle || extractClassifierTitle(xhtml);
+    const classifierTitles = tocTitle ? [tocTitle] : extractClassifierTitles(xhtml);
     const title = tocTitle || extractTitle(xhtml);
     seenTitles.push(title);
     seenIdrefs.push(entry.idref);
-    const plan = planSection(entry, spineIndex, title, classifierTitle, bodyStart, opts);
+    const plan = planSection(entry, spineIndex, title, classifierTitles, bodyStart, opts);
     if (!plan.include) return;
     if (paragraphs.length === 0) return;
     sections.push({
