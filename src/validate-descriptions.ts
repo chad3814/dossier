@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { anchorSortKey, normalizeAnchor } from "./registry.js";
+import { resolveSeriesOrExit } from "./series.js";
 import type { AliasEvent, DescriptionEvent, Registry } from "./types.js";
 
 function cmp(a: string, b: string): number {
@@ -85,10 +86,9 @@ export function validateAliases(registry: Registry, events: AliasEvent[]): { err
 }
 
 function main(): void {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const seriesDir = join(here, "..", "..", "dcc");
-  const logDir = join(seriesDir, "log");
-  const registry = JSON.parse(readFileSync(join(seriesDir, "output", "registry.json"), "utf8")) as Registry;
+  const { paths } = resolveSeriesOrExit(process.argv.slice(2), "npm run validate-descriptions -- --series <id>");
+  const logDir = paths.logDir;
+  const registry = JSON.parse(readFileSync(paths.registry, "utf8")) as Registry;
 
   const descEvents = JSON.parse(readFileSync(join(logDir, "descriptions.json"), "utf8")) as DescriptionEvent[];
   const desc = validateDescriptions(registry, descEvents);

@@ -1,9 +1,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDroppableAlias } from "./alias-clean.js";
 import { correctionIdMap, resolveHistoricalId } from "./id-history.js";
 import { cleanAnchors, normalizeName } from "./registry.js";
+import { resolveSeriesOrExit } from "./series.js";
 import type { AliasEvent, DescriptionEvent, Registry, RegistryEntity } from "./types.js";
 
 export interface Corrections {
@@ -195,14 +196,11 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
 }
 
 function main(): void {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const repoRoot = join(here, "..");
-  const dccRoot = join(repoRoot, "..", "dcc");
-
-  const registryPath = join(dccRoot, "output", "registry.json");
-  const aliasesPath = join(dccRoot, "log", "aliases.json");
-  const descriptionsPath = join(dccRoot, "log", "descriptions.json");
-  const correctionsPath = join(dccRoot, "corrections.json");
+  const { paths } = resolveSeriesOrExit(process.argv.slice(2), "npm run apply-corrections -- --series <id>");
+  const registryPath = paths.registry;
+  const aliasesPath = join(paths.logDir, "aliases.json");
+  const descriptionsPath = join(paths.logDir, "descriptions.json");
+  const correctionsPath = paths.corrections;
 
   const registry = JSON.parse(readFileSync(registryPath, "utf8")) as Registry;
   const aliases = JSON.parse(readFileSync(aliasesPath, "utf8")) as AliasEvent[];

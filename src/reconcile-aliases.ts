@@ -1,10 +1,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDroppableAlias } from "./alias-clean.js";
 import type { Corrections } from "./apply-corrections.js";
 import { correctionIdMap, resolveHistoricalId } from "./id-history.js";
 import { anchorSortKey, normalizeAnchor, normalizeName } from "./registry.js";
+import { resolveSeriesOrExit } from "./series.js";
 import type { AliasEvent, Registry, RegistryEntity } from "./types.js";
 
 export { isNoiseAlias } from "./alias-clean.js";
@@ -75,15 +76,14 @@ export function reconcileAliases(
 }
 
 function main(): void {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const seriesDir = join(here, "..", "..", "dcc");
-  const raw = JSON.parse(readFileSync(join(seriesDir, "log", "aliases.raw.json"), "utf8")) as AliasEvent[];
-  const registry = JSON.parse(readFileSync(join(seriesDir, "output", "registry.json"), "utf8")) as Registry;
-  const corrections = JSON.parse(readFileSync(join(seriesDir, "corrections.json"), "utf8")) as Corrections;
+  const { paths } = resolveSeriesOrExit(process.argv.slice(2), "npm run reconcile-aliases -- --series <id>");
+  const raw = JSON.parse(readFileSync(join(paths.logDir, "aliases.raw.json"), "utf8")) as AliasEvent[];
+  const registry = JSON.parse(readFileSync(paths.registry, "utf8")) as Registry;
+  const corrections = JSON.parse(readFileSync(paths.corrections, "utf8")) as Corrections;
 
   const idMap = correctionIdMap(corrections);
   const reconciled = reconcileAliases(registry, raw, idMap);
-  writeFileSync(join(seriesDir, "log", "aliases.json"), JSON.stringify(reconciled, null, 2), "utf8");
+  writeFileSync(join(paths.logDir, "aliases.json"), JSON.stringify(reconciled, null, 2), "utf8");
   console.log(`reconcile-aliases: ${raw.length} raw events -> ${reconciled.length} reconciled (noise dropped, deduped to earliest, unmatched added at last appearance)`);
 
   // Report ids the registry no longer knows. Their events are dropped and the completeness
