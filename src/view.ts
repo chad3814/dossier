@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { materialize } from "./log.js";
 import { renderMarkdown } from "./render.js";
+import { resolveSeriesOrExit } from "./series.js";
 import type { AliasEvent, DescriptionEvent, RegistryDelta } from "./types.js";
 
 /** Parse `--flag value` pairs; returns a map of flag → value. */
@@ -20,15 +20,17 @@ function parseArgs(argv: string[]): Record<string, string> {
 
 /**
  * Render the compendium as of a reading position:
- *   npm run view -- --through B2·C4 [--series dcc] [--out path]
+ *   npm run view -- --series <id> [--through B2·C4] [--out path]
  * Reads the persisted per-book log under `<series>/log/`, materializes it to the
  * cutoff, and renders Markdown to stdout (or `--out`).
  */
 function main(): void {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const args = parseArgs(process.argv.slice(2));
-  const seriesDir = join(here, "..", "..", args.series ?? "dcc");
-  const logDir = join(seriesDir, "log");
+  const { paths, rest } = resolveSeriesOrExit(
+    process.argv.slice(2),
+    "npm run view -- --series <id> [--through B2·C4] [--out path]",
+  );
+  const args = parseArgs(rest);
+  const logDir = paths.logDir;
   if (!existsSync(logDir)) {
     console.error(`view: ${logDir} not found — run "npm run migrate-to-log" first`);
     process.exit(1);
@@ -48,7 +50,7 @@ function main(): void {
   const at = args.through ? `through ${args.through}` : "full series";
 
   if (args.out) {
-    writeFileSync(join(seriesDir, args.out), renderMarkdown(registry), "utf8");
+    writeFileSync(join(paths.root, args.out), renderMarkdown(registry), "utf8");
     console.log(`view (${at}): ${registry.entities.length} entities -> ${args.out}`);
   } else {
     process.stdout.write(renderMarkdown(registry));
