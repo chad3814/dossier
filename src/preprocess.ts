@@ -272,6 +272,20 @@ export function unmatchedPreprocessEntries(
   return out;
 }
 
+/**
+ * Label de-duplicator for one book: the first use of a base label is returned as-is, later
+ * uses get `-2`, `-3`, … so two sections can never share an anchor namespace — including a
+ * `sectionLabels` override that happens to collide with a generated chapter label.
+ */
+export function makeLabelUniquer(): (base: string) => string {
+  const used = new Map<string, number>();
+  return (base) => {
+    const count = (used.get(base) ?? 0) + 1;
+    used.set(base, count);
+    return count === 1 ? base : `${base}-${count}`;
+  };
+}
+
 /** Resolve the OPF path from the EPUB container, then build the ordered, included sections. */
 function buildSections(zip: AdmZip, seriesOpts: PreprocessOptions, bookNumber: number): { sections: Section[]; warnings: string[] } {
   const opts = scopeOptionsToBook(seriesOpts, bookNumber);
@@ -299,12 +313,7 @@ function buildSections(zip: AdmZip, seriesOpts: PreprocessOptions, bookNumber: n
   }
   const tocTitleFor = (href: string): string => tocTitles.get(href.split("/").pop() ?? href) ?? "";
 
-  const usedLabels = new Map<string, number>();
-  const uniqueLabel = (base: string): string => {
-    const count = (usedLabels.get(base) ?? 0) + 1;
-    usedLabels.set(base, count);
-    return count === 1 ? base : `${base}-${count}`;
-  };
+  const uniqueLabel = makeLabelUniquer();
 
   const sections: Section[] = [];
   const seenTitles: string[] = [];

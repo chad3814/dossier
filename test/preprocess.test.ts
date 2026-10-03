@@ -4,6 +4,7 @@ import {
   classifyEntry,
   extractParagraphs,
   isInsideDir,
+  makeLabelUniquer,
   parseSpine,
   parseTocTitles,
   planSection,
@@ -267,5 +268,28 @@ describe("isInsideDir", () => {
     expect(isInsideDir("/cf/hierarchy/epubs", "/cf/dcc/epubs/book1.epub")).toBe(false);
     expect(isInsideDir("/cf/hierarchy/epubs", "/cf/hierarchy/epubs-old/book1.epub")).toBe(false);
     expect(isInsideDir("/cf/hierarchy/epubs", "/cf/hierarchy/epubs/../book1.epub")).toBe(false);
+  });
+});
+
+describe("makeLabelUniquer", () => {
+  it("returns the base unchanged the first time and suffixes -2, -3 on repeats", () => {
+    const unique = makeLabelUniquer();
+    expect(unique("Synchronism")).toBe("Synchronism");
+    expect(unique("Synchronism")).toBe("Synchronism-2");
+    expect(unique("Synchronism")).toBe("Synchronism-3");
+  });
+
+  it("keeps a sectionLabels override that collides with a generated chapter label distinct", () => {
+    const unique = makeLabelUniquer();
+    expect(unique("C1")).toBe("C1"); // override on an intro page
+    expect(unique("C1")).toBe("C1-2"); // the real Chapter 1 that follows
+    expect(unique("C2")).toBe("C2"); // unrelated labels are untouched
+  });
+
+  it("counts per base independently", () => {
+    const unique = makeLabelUniquer();
+    expect([unique("Interlude"), unique("C1"), unique("Interlude"), unique("Interlude-2")]).toEqual([
+      "Interlude", "C1", "Interlude-2", "Interlude-2",
+    ]);
   });
 });
