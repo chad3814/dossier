@@ -1,6 +1,6 @@
 export const meta = {
-  name: 'dcc-redescribe-incremental',
-  description: 'Re-describe DCC entities chapter-by-chapter with spoiler-bounded versioned descriptions + aliases',
+  name: 'dossier-redescribe-incremental',
+  description: 'Re-describe entities chapter-by-chapter with spoiler-bounded versioned descriptions + aliases',
   phases: [
     { title: 'Redescribe', detail: 'chapters in reading order; emit a new description/alias version only when newly revealed' },
   ],
@@ -13,6 +13,10 @@ const chapters = [];     // [{ file, label, entities: [{ id, anchor }] }]
 const entityMeta = {};   // { id: { canonicalName, type } }
 const seed = {};         // { id: { description, significance } }
 const aliasesById = {};  // { id: [registry aliases] }
+const seriesId = '';
+const seriesTitle = '';
+const seriesAuthor = '';
+const seriesNotes = [];  // series-specific prompt rules from <series>/series.json
 // ===================================================
 
 // Retry wrapper: agent() returns null on terminal API errors (e.g. Overloaded).
@@ -64,8 +68,12 @@ const schema = {
   required: ['descriptions', 'aliases'],
 };
 
+const seriesRules = seriesNotes.length
+  ? `\nSERIES-SPECIFIC RULES:\n${seriesNotes.map((n) => `- ${n}`).join('\n')}\n`
+  : '';
+
 const prompt = (path, entities) =>
-  `You are maintaining SPOILER-BOUNDED reference data for entities in "Dungeon Crawler Carl" by Matt Dinniman, Book ${bookNumber}, processed in strict reading order.
+  `You are maintaining SPOILER-BOUNDED reference data for entities in "${seriesTitle}" by ${seriesAuthor}, Book ${bookNumber}, processed in strict reading order.
 
 Read this chapter file with the Read tool: ${path}
 Each paragraph is annotated like [B${bookNumber}·C3·¶5].
@@ -78,7 +86,7 @@ Two tasks:
 1) DESCRIPTIONS ("descriptions"): For each entity, decide whether THIS chapter introduces it or materially changes/develops what a reader knows (a new role, relationship, ability, revelation, or status change — not a mere re-appearance). If yes, return {id, description, significance} with a fresh 2-4 sentence description using ONLY information available UP TO AND INCLUDING this chapter — NO later-chapter/later-book knowledge, NO outside canon. Otherwise omit it. Ground claims in the chapter text or the prior description; do not invent.
 
 2) ALIASES ("aliases"): For each entity, return {id, seen} where "seen" lists the candidateAliases whose EXACT form actually appears in THIS chapter's text (referring to this entity). Omit entities with no candidate appearing here; "seen" may be empty/omitted. The candidateAliases list is for MATCHING ONLY — do NOT let it inform the description (it may contain forms not yet revealed in prose).
-
+${seriesRules}
 Return "descriptions" and "aliases" as arrays (either may be empty).`;
 
 phase('Redescribe');
@@ -100,7 +108,7 @@ for (let i = 0; i < chapters.length; i++) {
   const res = await agentRetry(prompt(`${sectionDir}/${ch.file}`, withCurrent), {
     schema,
     phase: 'Redescribe',
-    label: `redescribe:B${bookNumber}·${ch.label}`,
+    label: `${seriesId}:redescribe:B${bookNumber}·${ch.label}`,
   });
   if (!res) continue;
   const anchorById = new Map(ch.entities.map((e) => [e.id, e.anchor]));
