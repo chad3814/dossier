@@ -31,35 +31,40 @@ crawler-numbers   deterministic pass to attach in-world IDs by regex + lookup (s
 render       registry.json → a readable Markdown compendium
 ```
 
-The registry is the source of truth (`output/registry.json`); the per-book deltas are an
+The registry is the source of truth (`<series>/output/registry.json`); the per-book deltas are an
 append-only event log. Pure data-handling steps (`apply-delta`, `dedupe`, `render`, `lookup`,
 `crawler-numbers`) are deterministic and unit-tested; only extraction/description use agents.
 
 ## Usage
 
+Every command operates on one series, named with `--series <id>` (or `DOSSIER_SERIES=<id>` in
+the environment). A series is a sibling directory `../<id>/` of this checkout — see
+[casefiles](https://github.com/chad3814/casefiles) — holding `series.json` (title, author, book
+titles, per-series prompt rules), `epubs/`, `output/`, `log/`, and gitignored `data/` working
+files.
+
 ```bash
 npm install
-npm test                         # unit tests for the deterministic core
-npm run preprocess -- book1.epub # → data/book1/sections + manifest.json
-npm run gen-workflow -- 1        # seed the workflow from the current registry
-# run the extraction workflow (see workflow/book-extract.js), save its delta, then:
-npm run apply-delta -- data/_wf/delta-book1.json
-npm run dedupe
-npm run render                   # → output/characters.md
-npm run lookup -- "the cat"      # fuzzy-find an entity in the registry
+npm test                                    # unit tests for the deterministic core
+npm run preprocess     -- --series dcc 1    # ../dcc/epubs/book1.epub → ../dcc/data/book1/{sections,manifest.json}
+npm run gen-workflow   -- --series dcc 1    # → ../dcc/data/_wf/book-extract.js, seeded from the registry
+# run the extraction workflow, save its delta, then:
+npm run apply-delta    -- --series dcc ../dcc/data/_wf/delta-book1.json
+npm run dedupe         -- --series dcc
+npm run render         -- --series dcc      # → ../dcc/output/characters.md
+npm run lookup         -- --series dcc "the cat"
 ```
 
-`data/`, `output/`, and `*.epub` are gitignored — they're local working artifacts and
-series-specific generated data. EPUBs are never committed (copyright); the annotated section
-text is fully regenerable from them via `preprocess`.
+`*.epub` is never committed (copyright); the annotated section text is fully regenerable from
+the EPUBs via `preprocess`.
 
 ## Notes
 
 - **Anchors are edition-specific.** They index the exact EPUB files you preprocess; a different
   edition renumbers paragraphs. EPUB has no fixed page numbers, so `¶` indices are the finest
   reliable, repeatable anchor.
-- **Per-series bits.** `crawler-numbers.ts` (in-world ID extraction) and the extraction prompt's
-  examples are tuned per series; generalizing these into a per-series profile is the intended
-  next step.
+- **Per-series bits** live in `<series>/series.json`: book titles, prompt rules spliced into
+  the extraction and re-describe workflows (`extraction.notes` / `redescribeNotes`), section
+  exclusions and label overrides for `preprocess`, and opt-in steps such as `crawlerNumbers`.
 - The extraction workflow is written for a multi-agent runner; `workflow/book-extract.js` is the
   logic template that `gen-workflow` parameterizes per book.
