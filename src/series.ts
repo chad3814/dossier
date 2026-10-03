@@ -153,6 +153,9 @@ export function validateProfile(raw: unknown, expectedId: string): SeriesProfile
   const sectionLabels: Record<string, string> = {};
   for (const [k, v] of Object.entries(preprocess.sectionLabels)) {
     if (typeof v !== "string") throw bad("preprocess", "{ excludeSections: string[], sectionLabels: Record<string, string> }");
+    // Labels become anchor tokens (B1·<label>·¶n) and file names; anything outside this set
+    // would be mangled by normalizeAnchor / the section file namer and never match again.
+    if (!/^[A-Za-z0-9_-]+$/.test(v)) throw bad(`preprocess.sectionLabels.${k}`, "an anchor-safe label matching [A-Za-z0-9_-]+");
     sectionLabels[k] = v;
   }
 

@@ -86,6 +86,18 @@ describe("validateProfile", () => {
     expect(() => validateProfile({ ...profile, steps: {} }, "demo")).toThrow(/"steps"/);
     expect(() => validateProfile("not an object", "demo")).toThrow(SeriesError);
   });
+
+  it("rejects sectionLabels values that are not anchor-safe labels", () => {
+    for (const label of ["Part One", "", "Sync·2", "a¶b", "x[1]"]) {
+      expect(
+        () => validateProfile({ ...profile, preprocess: { excludeSections: [], sectionLabels: { a: label } } }, "demo"),
+        label,
+      ).toThrow(/sectionLabels/);
+    }
+    expect(
+      () => validateProfile({ ...profile, preprocess: { excludeSections: [], sectionLabels: { a: "Synchronism-2_x" } } }, "demo"),
+    ).not.toThrow();
+  });
 });
 
 describe("loadSeries / resolveSeries", () => {

@@ -8,6 +8,8 @@ import {
   planSection,
   renderChunk,
   romanToInt,
+  scopeOptionsToBook,
+  unmatchedPreprocessEntries,
 } from "../src/preprocess.js";
 import type { Section } from "../src/types.js";
 
@@ -55,6 +57,12 @@ describe("classifyEntry", () => {
 
   it("falls back to a ch<digits> idref when the title is uninformative", () => {
     expect(classifyEntry("ch07", "", "")).toEqual({ type: "chapter", number: 7 });
+  });
+
+  it("does not let a ch<digits> idref override an informative title", () => {
+    expect(classifyEntry("ch01", "Prologue", "").type).toBe("prologue");
+    expect(classifyEntry("ch00", "Copyright", "").type).toBe("front");
+    expect(classifyEntry("ch05", "Part One", "").type).toBe("part");
   });
 
   it("does not treat a word that merely uses Roman letters as a numeral", () => {
@@ -122,6 +130,47 @@ describe("planSection", () => {
     // and the suffixing behaviour via baseLabel+uniqueLabel semantics documented in buildSections.
     const opts = { excludeSections: [], sectionLabels: { intro: "C1" } };
     expect(planSection({ idref: "intro", href: "i.xhtml" }, 3, "", "", "", opts)).toMatchObject({ include: true, base: "C1" });
+  });
+});
+
+describe("scopeOptionsToBook", () => {
+  const opts = {
+    excludeSections: ["Glossary", "B2:Map of the Catenan Republic", "B1:Prelude"],
+    sectionLabels: { "B1:part04_sub01": "Synchronism", "B2:part09": "Coda", intro: "Intro" },
+  };
+
+  it("keeps unscoped entries and this book's entries with the prefix stripped", () => {
+    expect(scopeOptionsToBook(opts, 1)).toEqual({
+      excludeSections: ["Glossary", "Prelude"],
+      sectionLabels: { part04_sub01: "Synchronism", intro: "Intro" },
+    });
+  });
+
+  it("drops entries scoped to other books", () => {
+    expect(scopeOptionsToBook(opts, 2)).toEqual({
+      excludeSections: ["Glossary", "Map of the Catenan Republic"],
+      sectionLabels: { part09: "Coda", intro: "Intro" },
+    });
+    expect(scopeOptionsToBook(opts, 3)).toEqual({ excludeSections: ["Glossary"], sectionLabels: { intro: "Intro" } });
+  });
+});
+
+describe("unmatchedPreprocessEntries", () => {
+  it("reports excludeSections and sectionLabels entries that matched no spine entry", () => {
+    const opts = {
+      excludeSections: ["Glossary", "Catenan Rankingz"],
+      sectionLabels: { part04_sub01: "Synchronism", part09: "Ghost" },
+    };
+    const out = unmatchedPreprocessEntries(opts, { titles: ["glossary", "Chapter I"], idrefs: ["ch01", "part04_sub01"] });
+    expect(out).toEqual([
+      'excludeSections: "Catenan Rankingz" matched no spine entry (title or idref)',
+      'sectionLabels: "part09" matched no spine idref',
+    ]);
+  });
+
+  it("matches case-insensitively and is empty when everything matched", () => {
+    const opts = { excludeSections: ["GLOSSARY", "bm02"], sectionLabels: { ch01: "Intro" } };
+    expect(unmatchedPreprocessEntries(opts, { titles: ["Glossary"], idrefs: ["bm02", "ch01"] })).toEqual([]);
   });
 });
 

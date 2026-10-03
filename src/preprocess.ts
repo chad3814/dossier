@@ -48,14 +48,12 @@ export function classifyEntry(
   const chap = t.match(/chapter\s+(\d+)/) ?? id.match(/chapter[^0-9]*(\d+)/);
   if (chap) return { type: "chapter", number: Number.parseInt(chap[1] as string, 10) };
 
-  // Roman-numeral chapter titles ("Chapter XXV"), then bare ch<digits> idrefs ("ch25").
+  // Roman-numeral chapter titles ("Chapter XXV").
   const roman = t.match(/chapter\s+([ivxlcdm]+)\b/);
   if (roman) {
     const n = romanToInt(roman[1] as string);
     if (n !== null) return { type: "chapter", number: n };
   }
-  const chId = id.match(/^ch0*(\d+)$/);
-  if (chId) return { type: "chapter", number: Number.parseInt(chId[1] as string, 10) };
 
   for (const type of ["prologue", "interlude", "epilogue", "epigraph"] as const) {
     if (new RegExp(`\\b${type}\\b`, "i").test(t) || id.includes(type)) {
@@ -73,6 +71,11 @@ export function classifyEntry(
   // Front-matter must be ruled out BEFORE the body-text fallback, since pages
   // like a Table of Contents open with the words "Chapter 1 Chapter 2 …".
   if (FRONT_MATTER.test(t) || FRONT_MATTER.test(id)) return { type: "front", number: null };
+
+  // A bare ch<digits> idref ("ch25") counts only once every title-based signal has had its say:
+  // publishers number every body file this way, including prologues and front matter.
+  const chId = id.match(/^ch0*(\d+)$/);
+  if (chId) return { type: "chapter", number: Number.parseInt(chId[1] as string, 10) };
 
   // Last resort: a chapter whose only signal is its opening words.
   const chapBody = bodyStart.toLowerCase().match(/^\W{0,4}chapter\s+(\d+)/);
@@ -194,21 +197,49 @@ export function renderChunk(bookNumber: number, chunk: Chunk): string {
 
 export type PreprocessOptions = SeriesProfile["preprocess"];
 
+const BOOK_SCOPE = /^B(\d+):(.+)$/;
+
+/**
+ * Resolve a series-wide preprocess profile for one book. Entries may be scoped with a
+ * `B<n>:` prefix (`"B2:Map of the Catenan Republic"`, `"B1:part04_sub01"`): those apply to
+ * book n only and are returned with the prefix stripped; unscoped entries apply to every book.
+ * Scoping keeps the unmatched-entry warning honest when an appendix exists in one book only.
+ */
+export function scopeOptionsToBook(opts: PreprocessOptions, bookNumber: number): PreprocessOptions {
+  const keep = (raw: string): string | null => {
+    const m = BOOK_SCOPE.exec(raw);
+    if (!m) return raw;
+    return Number.parseInt(m[1] as string, 10) === bookNumber ? (m[2] as string) : null;
+  };
+  const excludeSections: string[] = [];
+  for (const ex of opts.excludeSections) {
+    const k = keep(ex);
+    if (k !== null) excludeSections.push(k);
+  }
+  const sectionLabels: Record<string, string> = {};
+  for (const [key, label] of Object.entries(opts.sectionLabels)) {
+    const k = keep(key);
+    if (k !== null) sectionLabels[k] = label;
+  }
+  return { excludeSections, sectionLabels };
+}
+
 /**
  * Decide whether a spine entry becomes a section and what its base label is.
- * Per-series exclusions run first (exact, case-insensitive on TOC title or idref), then
- * front-matter classification, then an optional per-series label override by idref.
+ * Per-series exclusions run first (exact, case-insensitive on the section's display title —
+ * the same title the manifest records — or its idref), then front-matter classification,
+ * then an optional per-series label override by idref.
  */
 export function planSection(
   entry: SpineEntry,
   spineIndex: number,
-  tocTitle: string,
+  title: string,
   classifierTitle: string,
   bodyStart: string,
   opts: PreprocessOptions,
 ): { include: false } | { include: true; type: EntryType; number: number | null; base: string } {
   const excluded = new Set(opts.excludeSections.map((s) => s.trim().toLowerCase()));
-  if (excluded.has(tocTitle.trim().toLowerCase()) || excluded.has(entry.idref.trim().toLowerCase())) {
+  if (excluded.has(title.trim().toLowerCase()) || excluded.has(entry.idref.trim().toLowerCase())) {
     return { include: false };
   }
   const { type, number } = classifyEntry(entry.idref, classifierTitle, bodyStart);
@@ -218,8 +249,32 @@ export function planSection(
   return { include: true, type, number, base };
 }
 
+/**
+ * Profile entries that matched no spine entry. Anchors are permanent once a book is
+ * extracted, so a misspelled exclusion or label key must be loud, not silently ignored.
+ */
+export function unmatchedPreprocessEntries(
+  opts: PreprocessOptions,
+  seen: { titles: Iterable<string>; idrefs: Iterable<string> },
+): string[] {
+  const norm = (s: string): string => s.trim().toLowerCase();
+  const titles = new Set([...seen.titles].map(norm));
+  const idrefs = new Set([...seen.idrefs].map(norm));
+  const out: string[] = [];
+  for (const ex of opts.excludeSections) {
+    if (!titles.has(norm(ex)) && !idrefs.has(norm(ex))) {
+      out.push(`excludeSections: ${JSON.stringify(ex)} matched no spine entry (title or idref)`);
+    }
+  }
+  for (const key of Object.keys(opts.sectionLabels)) {
+    if (!idrefs.has(norm(key))) out.push(`sectionLabels: ${JSON.stringify(key)} matched no spine idref`);
+  }
+  return out;
+}
+
 /** Resolve the OPF path from the EPUB container, then build the ordered, included sections. */
-function buildSections(zip: AdmZip, opts: PreprocessOptions): Section[] {
+function buildSections(zip: AdmZip, seriesOpts: PreprocessOptions, bookNumber: number): { sections: Section[]; warnings: string[] } {
+  const opts = scopeOptionsToBook(seriesOpts, bookNumber);
   const containerXml = zip.readAsText("META-INF/container.xml");
   const opfPath = parse(containerXml).querySelector("rootfile")?.getAttribute("full-path");
   if (!opfPath) throw new Error("Could not locate OPF rootfile in container.xml");
@@ -252,6 +307,8 @@ function buildSections(zip: AdmZip, opts: PreprocessOptions): Section[] {
   };
 
   const sections: Section[] = [];
+  const seenTitles: string[] = [];
+  const seenIdrefs: string[] = [];
   spine.forEach((entry, spineIndex) => {
     const fullPath = opfDir === "." ? entry.href : posix.join(opfDir, entry.href);
     const xhtml = zip.readAsText(fullPath);
@@ -259,19 +316,22 @@ function buildSections(zip: AdmZip, opts: PreprocessOptions): Section[] {
     const bodyStart = paragraphs.slice(0, 2).join(" ").slice(0, 80);
     const tocTitle = tocTitleFor(entry.href);
     const classifierTitle = tocTitle || extractClassifierTitle(xhtml);
-    const plan = planSection(entry, spineIndex, tocTitle, classifierTitle, bodyStart, opts);
+    const title = tocTitle || extractTitle(xhtml);
+    seenTitles.push(title);
+    seenIdrefs.push(entry.idref);
+    const plan = planSection(entry, spineIndex, title, classifierTitle, bodyStart, opts);
     if (!plan.include) return;
     if (paragraphs.length === 0) return;
     sections.push({
       type: plan.type,
       label: uniqueLabel(plan.base),
       chapterNumber: plan.type === "chapter" ? plan.number : null,
-      title: tocTitle || extractTitle(xhtml),
+      title,
       href: entry.href,
       paragraphs,
     });
   });
-  return sections;
+  return { sections, warnings: unmatchedPreprocessEntries(opts, { titles: seenTitles, idrefs: seenIdrefs }) };
 }
 
 function bookNumberFromPath(epubPath: string): number {
@@ -293,7 +353,8 @@ function main(): void {
   const epubPath = asNumber !== null ? paths.epub(asNumber) : resolve(arg);
 
   const zip = new AdmZip(epubPath);
-  const sections = buildSections(zip, profile.preprocess);
+  const { sections, warnings } = buildSections(zip, profile.preprocess, bookNumber);
+  for (const w of warnings) console.warn(`preprocess: WARNING ${w} — check ${paths.profile}`);
 
   const outDir = paths.bookDir(bookNumber);
   const sectionDir = paths.sectionsDir(bookNumber);
