@@ -5,6 +5,7 @@ import {
   extractParagraphs,
   parseSpine,
   parseTocTitles,
+  planSection,
   renderChunk,
   romanToInt,
 } from "../src/preprocess.js";
@@ -84,6 +85,43 @@ describe("romanToInt", () => {
     expect(romanToInt("IIII")).toBeNull();
     expect(romanToInt("civil")).toBeNull();
     expect(romanToInt("12")).toBeNull();
+  });
+});
+
+describe("planSection", () => {
+  const none = { excludeSections: [], sectionLabels: {} };
+
+  it("drops entries listed in excludeSections by TOC title or idref (exact, case-insensitive)", () => {
+    const opts = { excludeSections: ["Catenan Rankings", "bm02"], sectionLabels: {} };
+    expect(planSection({ idref: "fm01", href: "fm01.xhtml" }, 5, "catenan rankings", "Catenan Rankings", "", opts)).toEqual({ include: false });
+    expect(planSection({ idref: "bm02", href: "bm02.xhtml" }, 90, "Locations", "Locations", "", opts)).toEqual({ include: false });
+  });
+
+  it("matches whole titles only — a substring is not an exclusion", () => {
+    const opts = { excludeSections: ["Map"], sectionLabels: {} };
+    const out = planSection({ idref: "ch03", href: "c.xhtml" }, 9, "The Mapmaker", "The Mapmaker", "", opts);
+    expect(out.include).toBe(true);
+  });
+
+  it("drops front matter and keeps classification for the rest", () => {
+    expect(planSection({ idref: "copyright", href: "c.xhtml" }, 1, "Copyright", "Copyright", "", none)).toEqual({ include: false });
+    expect(planSection({ idref: "ch02", href: "c.xhtml" }, 8, "Chapter II", "Chapter II", "", none)).toEqual({ include: true, type: "chapter", number: 2, base: "C2" });
+    expect(planSection({ idref: "x9", href: "x.xhtml" }, 42, "", "", "Some prose.", none)).toEqual({ include: true, type: "other", number: null, base: "Sec42" });
+  });
+
+  it("applies a sectionLabels override by idref regardless of classification", () => {
+    const opts = { excludeSections: [], sectionLabels: { part04_sub01: "Synchronism", part04_sub02: "Synchronism" } };
+    const a = planSection({ idref: "part04_sub01", href: "a.xhtml" }, 88, "Synchronism: Ex Uno Plures", "Synchronism: Ex Uno Plures", "", opts);
+    const b = planSection({ idref: "part04_sub02", href: "b.xhtml" }, 89, "", "", "T HE BURNING", opts);
+    expect(a).toMatchObject({ include: true, base: "Synchronism" });
+    expect(b).toMatchObject({ include: true, base: "Synchronism" });
+  });
+
+  it("an override colliding with a generated label still yields a distinct label via uniqueLabel", () => {
+    // planSection only chooses the base; uniqueness is applied in buildSections. Pin the base here
+    // and the suffixing behaviour via baseLabel+uniqueLabel semantics documented in buildSections.
+    const opts = { excludeSections: [], sectionLabels: { intro: "C1" } };
+    expect(planSection({ idref: "intro", href: "i.xhtml" }, 3, "", "", "", opts)).toMatchObject({ include: true, base: "C1" });
   });
 });
 

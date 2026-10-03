@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import AdmZip from "adm-zip";
 import { parse } from "node-html-parser";
 import { resolveSeriesOrExit } from "./series.js";
+import type { SeriesProfile } from "./series.js";
 import type { BookManifest, Chunk, EntryType, Section, SpineEntry } from "./types.js";
 
 const FRONT_MATTER =
@@ -191,8 +192,34 @@ export function renderChunk(bookNumber: number, chunk: Chunk): string {
   return lines.join("\n");
 }
 
+export type PreprocessOptions = SeriesProfile["preprocess"];
+
+/**
+ * Decide whether a spine entry becomes a section and what its base label is.
+ * Per-series exclusions run first (exact, case-insensitive on TOC title or idref), then
+ * front-matter classification, then an optional per-series label override by idref.
+ */
+export function planSection(
+  entry: SpineEntry,
+  spineIndex: number,
+  tocTitle: string,
+  classifierTitle: string,
+  bodyStart: string,
+  opts: PreprocessOptions,
+): { include: false } | { include: true; type: EntryType; number: number | null; base: string } {
+  const excluded = new Set(opts.excludeSections.map((s) => s.trim().toLowerCase()));
+  if (excluded.has(tocTitle.trim().toLowerCase()) || excluded.has(entry.idref.trim().toLowerCase())) {
+    return { include: false };
+  }
+  const { type, number } = classifyEntry(entry.idref, classifierTitle, bodyStart);
+  if (type === "front") return { include: false };
+  const override = opts.sectionLabels[entry.idref];
+  const base = override ?? (type === "other" ? `Sec${spineIndex}` : baseLabel(type, number));
+  return { include: true, type, number, base };
+}
+
 /** Resolve the OPF path from the EPUB container, then build the ordered, included sections. */
-function buildSections(zip: AdmZip): Section[] {
+function buildSections(zip: AdmZip, opts: PreprocessOptions): Section[] {
   const containerXml = zip.readAsText("META-INF/container.xml");
   const opfPath = parse(containerXml).querySelector("rootfile")?.getAttribute("full-path");
   if (!opfPath) throw new Error("Could not locate OPF rootfile in container.xml");
@@ -232,14 +259,13 @@ function buildSections(zip: AdmZip): Section[] {
     const bodyStart = paragraphs.slice(0, 2).join(" ").slice(0, 80);
     const tocTitle = tocTitleFor(entry.href);
     const classifierTitle = tocTitle || extractClassifierTitle(xhtml);
-    const { type, number } = classifyEntry(entry.idref, classifierTitle, bodyStart);
-    if (type === "front") return;
+    const plan = planSection(entry, spineIndex, tocTitle, classifierTitle, bodyStart, opts);
+    if (!plan.include) return;
     if (paragraphs.length === 0) return;
-    const base = type === "other" ? `Sec${spineIndex}` : baseLabel(type, number);
     sections.push({
-      type,
-      label: uniqueLabel(base),
-      chapterNumber: type === "chapter" ? number : null,
+      type: plan.type,
+      label: uniqueLabel(plan.base),
+      chapterNumber: plan.type === "chapter" ? plan.number : null,
       title: tocTitle || extractTitle(xhtml),
       href: entry.href,
       paragraphs,
@@ -256,7 +282,7 @@ function bookNumberFromPath(epubPath: string): number {
 
 function main(): void {
   const usage = "npm run preprocess -- --series <id> <bookNumber | path/to/book.epub>";
-  const { paths, rest } = resolveSeriesOrExit(process.argv.slice(2), usage);
+  const { paths, profile, rest } = resolveSeriesOrExit(process.argv.slice(2), usage);
   const arg = rest[0];
   if (!arg) {
     console.error(`usage: ${usage}`);
@@ -267,7 +293,7 @@ function main(): void {
   const epubPath = asNumber !== null ? paths.epub(asNumber) : resolve(arg);
 
   const zip = new AdmZip(epubPath);
-  const sections = buildSections(zip);
+  const sections = buildSections(zip, profile.preprocess);
 
   const outDir = paths.bookDir(bookNumber);
   const sectionDir = paths.sectionsDir(bookNumber);
