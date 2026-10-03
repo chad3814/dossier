@@ -1,6 +1,4 @@
 node_modules/
 dist/
-data/
-output/
 *.epub
 .DS_Store
