@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { earliestAppearance, groupAnchors, renderMarkdown } from "../src/render.js";
+import { earliestAppearance, groupAnchors, parseRenderArgs, renderMarkdown } from "../src/render.js";
 import { buildSectionOrder } from "../src/registry.js";
 import type { Registry } from "../src/types.js";
 
@@ -63,5 +63,23 @@ describe("renderMarkdown", () => {
     expect(md).toContain('**First appears:** `B1·C1·¶3` — "The cat yowled."');
     expect(md).toContain("**Appears:** B1 · C1 ¶3, 8 · C2 ¶1");
     expect(md.indexOf("### Princess Donut")).toBeLessThan(md.indexOf("### Mordecai"));
+  });
+});
+
+describe("parseRenderArgs", () => {
+  it("accepts no args or a single --out <path>", () => {
+    expect(parseRenderArgs([])).toEqual({});
+    expect(parseRenderArgs(["--out", "x.md"])).toEqual({ out: "x.md" });
+  });
+
+  it("rejects a valueless --out or a flag-shaped value", () => {
+    expect(() => parseRenderArgs(["--out"])).toThrow(/--out requires a value/);
+    expect(() => parseRenderArgs(["--out", "--series"])).toThrow(/--out requires a value/);
+  });
+
+  it("rejects stray positionals and unknown flags (the old [in] [out] form)", () => {
+    expect(() => parseRenderArgs(["output/registry.json"])).toThrow(/unexpected argument "output\/registry.json"/);
+    expect(() => parseRenderArgs(["--out", "x.md", "extra.md"])).toThrow(/unexpected argument "extra.md"/);
+    expect(() => parseRenderArgs(["--format", "md"])).toThrow(/unexpected argument "--format"/);
   });
 });

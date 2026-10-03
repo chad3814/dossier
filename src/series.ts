@@ -62,7 +62,14 @@ export interface SeriesPromptMeta {
 
 export const SERIES_ENV = "DOSSIER_SERIES";
 
+/** A series id doubles as a directory name, URL slug, and commit prefix: keep it plain. */
+const SERIES_ID = /^[a-z0-9-]+$/;
+
 export class SeriesError extends Error {}
+
+function assertSeriesId(id: string): void {
+  if (!SERIES_ID.test(id)) throw new SeriesError(`series id "${id}" must match [a-z0-9-]+`);
+}
 
 /** casefiles/ is the parent of the dossier checkout (casefiles/dossier/src/series.ts → casefiles). */
 export function defaultCasefilesRoot(): string {
@@ -130,6 +137,7 @@ export function validateProfile(raw: unknown, expectedId: string): SeriesProfile
   const { id, title, author, books, extraction, preprocess, steps } = raw;
 
   if (typeof id !== "string") throw bad("id", "a string");
+  assertSeriesId(id);
   if (id !== expectedId) throw new SeriesError(`series.json: id "${id}" does not match directory "${expectedId}"`);
   if (typeof title !== "string" || title.length === 0) throw bad("title", "a non-empty string");
   if (typeof author !== "string" || author.length === 0) throw bad("author", "a non-empty string");
@@ -197,6 +205,7 @@ export function resolveSeries(argv: string[], opts: ResolveOptions = {}): Resolv
   const { id: flagId, rest } = parseSeriesArg(argv);
   const id = flagId ?? env[SERIES_ENV] ?? null;
   if (!id) throw new SeriesError(`no series given: pass --series <id> or set ${SERIES_ENV}`);
+  assertSeriesId(id);
   const { paths, profile } = loadSeries(casefilesRoot, id);
   return { paths, profile, rest };
 }

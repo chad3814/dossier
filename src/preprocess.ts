@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { join, posix, relative, resolve } from "node:path";
+import { isAbsolute, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import AdmZip from "adm-zip";
 import { parse } from "node-html-parser";
@@ -334,6 +334,12 @@ function buildSections(zip: AdmZip, seriesOpts: PreprocessOptions, bookNumber: n
   return { sections, warnings: unmatchedPreprocessEntries(opts, { titles: seenTitles, idrefs: seenIdrefs }) };
 }
 
+/** True when `file` is `dir` itself or lies anywhere beneath it (lexically, after normalization). */
+export function isInsideDir(dir: string, file: string): boolean {
+  const rel = relative(resolve(dir), resolve(file));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
 function bookNumberFromPath(epubPath: string): number {
   const m = epubPath.match(/book\s*0*(\d+)/i);
   if (!m) throw new Error(`Could not infer book number from path: ${epubPath}`);
@@ -351,6 +357,13 @@ function main(): void {
   const asNumber = /^\d+$/.test(arg) ? Number.parseInt(arg, 10) : null;
   const bookNumber = asNumber ?? bookNumberFromPath(arg);
   const epubPath = asNumber !== null ? paths.epub(asNumber) : resolve(arg);
+  if (!isInsideDir(paths.epubsDir, epubPath)) {
+    console.error(
+      `preprocess: ${epubPath} is outside ${paths.epubsDir}. Copy the EPUB into the series' epubs/ directory first — ` +
+        `anchors are tied to the exact file, so the one that was preprocessed must stay with the series.`,
+    );
+    process.exit(1);
+  }
 
   const zip = new AdmZip(epubPath);
   const { sections, warnings } = buildSections(zip, profile.preprocess, bookNumber);

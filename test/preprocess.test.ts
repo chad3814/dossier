@@ -3,6 +3,7 @@ import {
   baseLabel,
   classifyEntry,
   extractParagraphs,
+  isInsideDir,
   parseSpine,
   parseTocTitles,
   planSection,
@@ -255,5 +256,16 @@ describe("renderChunk", () => {
     expect(text).toContain('### B1·C6 — "Chapter 6"');
     expect(text).toContain("[B1·C6·¶1] First line.");
     expect(text).toContain("[B1·C6·¶2] Second line.");
+  });
+});
+
+describe("isInsideDir", () => {
+  it("is true for files at or below the directory and false otherwise", () => {
+    expect(isInsideDir("/cf/hierarchy/epubs", "/cf/hierarchy/epubs/book1.epub")).toBe(true);
+    expect(isInsideDir("/cf/hierarchy/epubs", "/cf/hierarchy/epubs/sub/book1.epub")).toBe(true);
+    expect(isInsideDir("/cf/hierarchy/epubs", "/cf/hierarchy/book1.epub")).toBe(false);
+    expect(isInsideDir("/cf/hierarchy/epubs", "/cf/dcc/epubs/book1.epub")).toBe(false);
+    expect(isInsideDir("/cf/hierarchy/epubs", "/cf/hierarchy/epubs-old/book1.epub")).toBe(false);
+    expect(isInsideDir("/cf/hierarchy/epubs", "/cf/hierarchy/epubs/../book1.epub")).toBe(false);
   });
 });

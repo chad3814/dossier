@@ -141,6 +141,21 @@ describe("loadSeries / resolveSeries", () => {
   it("fails when neither flag nor env names a series", () => {
     expect(() => resolveSeries(["7"], { casefilesRoot: root, env: {} })).toThrow(/--series <id>/);
   });
+
+  it("rejects ids outside [a-z0-9-] before touching the filesystem", () => {
+    for (const id of ["DCC", "../demo", "a_b", "demo/", "a b", "démo"]) {
+      expect(() => resolveSeries(["--series", id], { casefilesRoot: root, env: {} }), id).toThrow(/\[a-z0-9-\]/);
+      expect(() => resolveSeries([], { casefilesRoot: root, env: { [SERIES_ENV]: id } }), `env ${id}`).toThrow(/\[a-z0-9-\]/);
+    }
+    expect(resolveSeries(["--series", "demo"], { casefilesRoot: root, env: {} }).paths.id).toBe("demo");
+  });
+});
+
+describe("validateProfile id format", () => {
+  it("rejects an id outside [a-z0-9-] even when it matches the directory", () => {
+    expect(() => validateProfile({ ...profile, id: "Demo" }, "Demo")).toThrow(/\[a-z0-9-\]/);
+    expect(() => validateProfile({ ...profile, id: "demo-2" }, "demo-2")).not.toThrow();
+  });
 });
 
 describe("promptMeta / requireStep", () => {

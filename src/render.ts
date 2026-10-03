@@ -139,11 +139,34 @@ export function renderMarkdown(registry: Registry): string {
   return out.join("\n\n") + "\n";
 }
 
+/** Strict argument parsing for `render`: only `--out <path>` is accepted; anything else throws. */
+export function parseRenderArgs(rest: string[]): { out?: string } {
+  const parsed: { out?: string } = {};
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i] as string;
+    if (a === "--out") {
+      const v = rest[i + 1];
+      if (v === undefined || v.startsWith("--")) throw new Error("--out requires a value");
+      parsed.out = v;
+      i++;
+    } else {
+      throw new Error(`unexpected argument ${JSON.stringify(a)}`);
+    }
+  }
+  return parsed;
+}
+
 function main(): void {
-  const { paths, rest } = resolveSeriesOrExit(process.argv.slice(2), "npm run render -- --series <id> [--out <path>]");
-  const outIdx = rest.indexOf("--out");
-  const outArg = outIdx >= 0 ? rest[outIdx + 1] : undefined;
-  const outPath = outArg ? resolve(outArg) : join(paths.outputDir, "characters.md");
+  const usage = "npm run render -- --series <id> [--out <path>]";
+  const { paths, rest } = resolveSeriesOrExit(process.argv.slice(2), usage);
+  let args: { out?: string };
+  try {
+    args = parseRenderArgs(rest);
+  } catch (e) {
+    console.error(`render: ${(e as Error).message}\nusage: ${usage}`);
+    process.exit(1);
+  }
+  const outPath = args.out ? resolve(args.out) : join(paths.outputDir, "characters.md");
   const registry = JSON.parse(readFileSync(paths.registry, "utf8")) as Registry;
   writeFileSync(outPath, renderMarkdown(registry), "utf8");
   console.log(`Rendered ${registry.entities.length} entities -> ${outPath}`);
