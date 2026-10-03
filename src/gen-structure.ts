@@ -26,7 +26,7 @@ function main(): void {
   const titles = new Map(profile.books.map((b) => [b.number, b.title]));
   const books = buildBooksField(registry, manifestFor, (book) => titles.get(book));
   const next: Registry = { ...registry, books };
-  writeFileSync(paths.registry, JSON.stringify(next, null, 2), "utf8");
+  writeFileSync(paths.registry, JSON.stringify(next, null, 2) + "\n", "utf8");
   console.log(`gen-structure: wrote books for ${books.length} books (${books.map((b) => b.number).join(", ")}).`);
 }
 
