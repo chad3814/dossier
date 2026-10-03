@@ -239,3 +239,16 @@ describe("anchorSortKey with SectionOrder", () => {
     expect(anchorSortKey("B8·Sec999·¶1", order)[1]).toBe(10999); // heuristic Sec
   });
 });
+
+describe("applyDelta preserves registry metadata", () => {
+  it("keeps the manifest-derived books field on the returned registry", () => {
+    const reg: Registry = {
+      booksProcessed: [1],
+      entities: [mkEntity({ id: "carl", canonicalName: "Carl", appearances: ["B1·C1·¶9"] })],
+      books: [{ number: 1, title: "Book One", sections: ["C1"] }],
+    };
+    const delta: RegistryDelta = { booksProcessed: [2], matched: [], newEntities: [] };
+    const { registry: out } = applyDelta(reg, delta);
+    expect(out.books).toEqual([{ number: 1, title: "Book One", sections: ["C1"] }]);
+  });
+});

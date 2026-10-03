@@ -115,3 +115,15 @@ describe("dedupe", () => {
     expect(out.entities[0]?.appearances).toEqual(["B1·C2·¶3", "B1·C10·¶1"]);
   });
 });
+
+describe("dedupe preserves registry metadata", () => {
+  it("keeps the manifest-derived books field on the returned registry", () => {
+    const registry: Registry = {
+      booksProcessed: [1],
+      entities: [mkEntity({ id: "carl", canonicalName: "Carl", appearances: ["B1·C1·¶1"] })],
+      books: [{ number: 1, title: "Book One", sections: ["C1"] }],
+    };
+    const { registry: out } = dedupe(registry);
+    expect(out.books).toEqual([{ number: 1, title: "Book One", sections: ["C1"] }]);
+  });
+});

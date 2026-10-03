@@ -157,7 +157,7 @@ export function applyDelta(
   }
 
   const booksProcessed = [...new Set([...registry.booksProcessed, ...delta.booksProcessed])].sort((a, b) => a - b);
-  return { registry: { booksProcessed, entities: registry.entities }, added, appended, dropped };
+  return { registry: { ...registry, booksProcessed, entities: registry.entities }, added, appended, dropped };
 }
 
 /** Leading title/role words that denote the same entity (e.g. "Crawler Frank Q" == "Frank Q"). */
@@ -292,7 +292,7 @@ export function dedupe(registry: Registry): { registry: Registry; merged: number
   }
 
   out.sort((a, b) => a.canonicalName.localeCompare(b.canonicalName));
-  return { registry: { booksProcessed: registry.booksProcessed, entities: out }, merged };
+  return { registry: { ...registry, entities: out }, merged };
 }
 
 function main(): void {
