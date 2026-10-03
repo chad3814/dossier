@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { materialize } from "./log.js";
 import { renderMarkdown } from "./render.js";
-import { resolveSeriesOrExit } from "./series.js";
+import { resolveOutPath, resolveSeriesOrExit } from "./series.js";
 import type { AliasEvent, DescriptionEvent, RegistryDelta } from "./types.js";
 
 /** Parse `--flag value` pairs; returns a map of flag → value. */
@@ -50,7 +50,7 @@ function main(): void {
   const at = args.through ? `through ${args.through}` : "full series";
 
   if (args.out) {
-    writeFileSync(join(paths.root, args.out), renderMarkdown(registry), "utf8");
+    writeFileSync(resolveOutPath(paths, args.out), renderMarkdown(registry), "utf8");
     console.log(`view (${at}): ${registry.entities.length} entities -> ${args.out}`);
   } else {
     process.stdout.write(renderMarkdown(registry));

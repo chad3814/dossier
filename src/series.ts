@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Per-series profile: casefiles/<id>/series.json. All fields required; [] / {} mean "none". */
@@ -221,6 +221,14 @@ export function resolveSeriesOrExit(argv: string[], usage: string): ResolvedSeri
     }
     throw e;
   }
+}
+
+/**
+ * Where a `--out <path>` lands: relative paths are taken from the series root (so
+ * `--out output/characters.books1-7.md` writes into the series), absolute paths as given.
+ */
+export function resolveOutPath(paths: SeriesPaths, out: string): string {
+  return resolve(paths.root, out);
 }
 
 export function promptMeta(profile: SeriesProfile, kind: "extraction" | "redescribe"): SeriesPromptMeta {

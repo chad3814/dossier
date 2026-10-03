@@ -9,6 +9,7 @@ import {
   parseSeriesArg,
   promptMeta,
   requireStep,
+  resolveOutPath,
   resolveSeries,
   seriesPaths,
   validateProfile,
@@ -167,5 +168,16 @@ describe("promptMeta / requireStep", () => {
   it("requireStep throws when a step is disabled and passes when enabled", () => {
     expect(() => requireStep(profile, "crawlerNumbers")).toThrow(/crawlerNumbers/);
     expect(() => requireStep({ ...profile, steps: { crawlerNumbers: true } }, "crawlerNumbers")).not.toThrow();
+  });
+});
+
+describe("resolveOutPath", () => {
+  const paths = seriesPaths("/cf", "dcc");
+  it("resolves a relative path against the series root", () => {
+    expect(resolveOutPath(paths, "output/characters.books1-7.md")).toBe("/cf/dcc/output/characters.books1-7.md");
+    expect(resolveOutPath(paths, "x.md")).toBe("/cf/dcc/x.md");
+  });
+  it("leaves an absolute path alone", () => {
+    expect(resolveOutPath(paths, "/tmp/x.md")).toBe("/tmp/x.md");
   });
 });

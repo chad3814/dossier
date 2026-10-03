@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { anchorSortKey, buildSectionOrder, type SectionOrder } from "./registry.js";
-import { resolveSeriesOrExit } from "./series.js";
+import { resolveOutPath, resolveSeriesOrExit } from "./series.js";
 import type { EntityType, Registry, RegistryEntity } from "./types.js";
 
 /** The earliest anchor by true reading order (spine when available, else heuristic). */
@@ -166,7 +166,7 @@ function main(): void {
     console.error(`render: ${(e as Error).message}\nusage: ${usage}`);
     process.exit(1);
   }
-  const outPath = args.out ? resolve(args.out) : join(paths.outputDir, "characters.md");
+  const outPath = args.out ? resolveOutPath(paths, args.out) : join(paths.outputDir, "characters.md");
   const registry = JSON.parse(readFileSync(paths.registry, "utf8")) as Registry;
   writeFileSync(outPath, renderMarkdown(registry), "utf8");
   console.log(`Rendered ${registry.entities.length} entities -> ${outPath}`);
