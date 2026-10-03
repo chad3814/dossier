@@ -7,7 +7,23 @@ import { resolveSeriesOrExit } from "./series.js";
 import type { BookManifest, Chunk, EntryType, Section, SpineEntry } from "./types.js";
 
 const FRONT_MATTER =
-  /cover|title\s*page|copyright|dedication|table of contents|^contents$|colophon|acknowledg|about the author|also[-_ ]?by|backmatter|ad[-_]?card|teaser|newsletter|by the same author/i;
+  /cover|title\s*page|copyright|dedication|table of contents|^contents$|colophon|acknowledg|about the author|also[-_ ]?by|backmatter|ad[-_]?card|teaser|newsletter|by the same author|glossary|^map( of\b.*)?$|image description|major characters|cast of characters|dramatis personae|endpaper|signup|recommendpage|longdesc|drm[-_ ]?notice/i;
+
+const ROMAN = /^m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$/;
+const ROMAN_VALUES: Record<string, number> = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
+
+/** Parse a well-formed Roman numeral (case-insensitive); null for anything else. */
+export function romanToInt(s: string): number | null {
+  const t = s.toLowerCase();
+  if (t.length === 0 || !ROMAN.test(t)) return null;
+  let total = 0;
+  for (let i = 0; i < t.length; i++) {
+    const cur = ROMAN_VALUES[t[i] as string] ?? 0;
+    const next = ROMAN_VALUES[t[i + 1] ?? ""] ?? 0;
+    total += cur < next ? -cur : cur;
+  }
+  return total;
+}
 
 /**
  * Classify a spine entry. EPUBs vary: some encode the kind in the manifest idref
@@ -30,6 +46,15 @@ export function classifyEntry(
   // Chapter from the reliable signals (title text, then idref).
   const chap = t.match(/chapter\s+(\d+)/) ?? id.match(/chapter[^0-9]*(\d+)/);
   if (chap) return { type: "chapter", number: Number.parseInt(chap[1] as string, 10) };
+
+  // Roman-numeral chapter titles ("Chapter XXV"), then bare ch<digits> idrefs ("ch25").
+  const roman = t.match(/chapter\s+([ivxlcdm]+)\b/);
+  if (roman) {
+    const n = romanToInt(roman[1] as string);
+    if (n !== null) return { type: "chapter", number: n };
+  }
+  const chId = id.match(/^ch0*(\d+)$/);
+  if (chId) return { type: "chapter", number: Number.parseInt(chId[1] as string, 10) };
 
   for (const type of ["prologue", "interlude", "epilogue", "epigraph"] as const) {
     if (new RegExp(`\\b${type}\\b`, "i").test(t) || id.includes(type)) {

@@ -6,6 +6,7 @@ import {
   parseSpine,
   parseTocTitles,
   renderChunk,
+  romanToInt,
 } from "../src/preprocess.js";
 import type { Section } from "../src/types.js";
 
@@ -42,6 +43,47 @@ describe("classifyEntry", () => {
     expect(classifyEntry("x_part-001-xhtml")).toEqual({ type: "part", number: 1 });
     expect(classifyEntry("x_copyright-xhtml").type).toBe("front");
     expect(classifyEntry("x_dedication-xhtml").type).toBe("front");
+  });
+
+  it("parses Roman-numeral chapter titles (Hierarchy style)", () => {
+    expect(classifyEntry("ch01", "Chapter I", "")).toEqual({ type: "chapter", number: 1 });
+    expect(classifyEntry("ch25", "Chapter XXV", "")).toEqual({ type: "chapter", number: 25 });
+    expect(classifyEntry("ch50", "Chapter L", "")).toEqual({ type: "chapter", number: 50 });
+    expect(classifyEntry("ch74", "Chapter LXXIV", "")).toEqual({ type: "chapter", number: 74 });
+  });
+
+  it("falls back to a ch<digits> idref when the title is uninformative", () => {
+    expect(classifyEntry("ch07", "", "")).toEqual({ type: "chapter", number: 7 });
+  });
+
+  it("does not treat a word that merely uses Roman letters as a numeral", () => {
+    expect(classifyEntry("x1", "Chapter Civil", "").type).not.toBe("chapter");
+    expect(classifyEntry("x2", "Chapter IIII", "").type).not.toBe("chapter");
+  });
+
+  it("classifies in-book appendices and publisher pages as front matter", () => {
+    for (const title of ["Glossary", "Map of the Catenan Republic", "Map", "Image Description", "Major Characters", "Cast of Characters", "Dramatis Personae"]) {
+      expect(classifyEntry("x", title, "").type, title).toBe("front");
+    }
+    for (const idref of ["endpaper_front", "SS_US_adult_signup_back", "SS_recommendpage", "longdesc", "SS_DRM_notice"]) {
+      expect(classifyEntry(idref, "", "").type, idref).toBe("front");
+    }
+  });
+});
+
+describe("romanToInt", () => {
+  it("parses well-formed numerals case-insensitively", () => {
+    expect(romanToInt("i")).toBe(1);
+    expect(romanToInt("IV")).toBe(4);
+    expect(romanToInt("xl")).toBe(40);
+    expect(romanToInt("XCIX")).toBe(99);
+    expect(romanToInt("MMXXVI")).toBe(2026);
+  });
+  it("rejects malformed or non-numeral strings", () => {
+    expect(romanToInt("")).toBeNull();
+    expect(romanToInt("IIII")).toBeNull();
+    expect(romanToInt("civil")).toBeNull();
+    expect(romanToInt("12")).toBeNull();
   });
 });
 
