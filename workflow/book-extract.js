@@ -1,8 +1,8 @@
 export const meta = {
-  name: 'dcc-extract-incremental',
-  description: 'Sequentially extract DCC characters chapter-by-chapter against a running registry',
+  name: 'dossier-extract-incremental',
+  description: 'Sequentially extract named entities chapter-by-chapter against a running registry',
   phases: [
-    { title: 'Extract', detail: 'chapters in reading order, each matched against the known-character index' },
+    { title: 'Extract', detail: 'chapters in reading order, each matched against the known-entity index' },
     { title: 'Describe', detail: 'describe newly-introduced entities in parallel' },
   ],
 };
@@ -13,6 +13,10 @@ const sectionDir = '';
 const sectionFiles = [];
 const startIndex = [];           // compact prior registry: {id, canonicalName, aliases, type}
 const startBooksProcessed = [];
+const seriesId = '';
+const seriesTitle = '';
+const seriesAuthor = '';
+const seriesNotes = [];          // series-specific prompt rules from <series>/series.json
 // ===================================================
 
 // deterministic helpers mirroring src/registry.ts (the sandbox can't import project files)
@@ -73,7 +77,7 @@ const extractSchema = {
           aliases: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Any NEW name-forms seen here (esp. Crawler #IDs, titles, full names). [] if none.',
+            description: 'Any NEW name-forms seen here (titles, full names, epithets, in-world identifiers). [] if none.',
           },
         },
         required: ['id', 'anchor', 'aliases'],
@@ -128,8 +132,12 @@ const describeSchema = {
   required: ['descriptions'],
 };
 
+const seriesRules = seriesNotes.length
+  ? `\nSERIES-SPECIFIC RULES:\n${seriesNotes.map((n) => `- ${n}`).join('\n')}\n`
+  : '';
+
 const extractPrompt = (path, idx) =>
-  `You are extracting named entities from ONE chapter of "Dungeon Crawler Carl" by Matt Dinniman (Book ${bookNumber}), processed in reading order.
+  `You are extracting named entities from ONE chapter of "${seriesTitle}" by ${seriesAuthor} (Book ${bookNumber}), processed in reading order.
 
 Use the Read tool to read this file: ${path}
 
@@ -139,24 +147,23 @@ ALREADY-KNOWN entities discovered in earlier chapters/books (JSON: id, canonical
 ${JSON.stringify(idx)}
 
 For EVERY paragraph in which a qualifying entity appears:
-- If it refers to an already-known entity above — by name, alias, title, epithet, or context (e.g. "the cat" = Princess Donut, "the Queen" = Princess Donut) — add an entry to "matched" with that entity's exact id, the exact anchor, and an "aliases" array of any NEW name-forms for it that appear here (otherwise []).
+- If it refers to an already-known entity above — by name, alias, title, epithet, or context (an epithet, role, or description the text clearly ties to a known entity) — add an entry to "matched" with that entity's exact id, the exact anchor, and an "aliases" array of any NEW name-forms for it that appear here (otherwise []).
 - Otherwise add it to "new": name (clearest form), aliases used here, type (person|creature|faction|ai_system|place|other), tag, a short factual roleHint, and mentions [{anchor, snippet}].
 
-CRAWLER NUMBERS (high priority):
-- Crawler IDs like "Crawler #4,122" are key identifiers. ALWAYS capture the crawler number as an alias for the crawler it belongs to — in the "aliases" of a matched entry if known, or the "aliases" of a new entry if first seen. Tie the number to the correct person when the text makes it clear.
-- Likewise capture other distinct name-forms as aliases: full names, titles, epithets, nicknames.
+ALIASES:
+- Capture every distinct name-form as an alias: full names, titles, epithets, nicknames, and in-world identifiers. Put them in the "aliases" of a matched entry if the entity is known, or of a new entry if first seen.
 
 EXHAUSTIVE APPEARANCE LOGGING:
-- Log EVERY paragraph (¶) where an entity appears — one matched entry per (entity, paragraph). If Princess Donut appears in 14 paragraphs, emit 14 matched entries. Same for new entities: list every paragraph mention.
+- Log EVERY paragraph (¶) where an entity appears — one matched entry per (entity, paragraph). If an entity appears in 14 paragraphs, emit 14 matched entries. Same for new entities: list every paragraph mention.
 
 WHAT COUNTS AS AN ENTITY:
-- Include only NAMED proper nouns or a specifically individuated entity: named people, named creatures/pets, named bosses, named factions/orgs/companies, distinct AI/system voices, named places, named items.
-- DO NOT include generic species, monster types, roles, or common-noun categories ("goblin", "mob", "crawlers" as a group, "human", "safe room", "boss"). Only the SPECIFIC named instance counts.
+- Include only NAMED proper nouns or a specifically individuated entity: named people, named creatures/pets, named antagonists, named factions/orgs/companies, distinct AI/system voices, named places, named items.
+- DO NOT include generic species, roles, groups, or common-noun categories ("goblin", "soldier", "human", "the guards", "the city"). Only the SPECIFIC named instance counts.
 - When unsure whether something is a named individual vs a generic category, EXCLUDE it.
 
 MATCHING NORMALIZATION:
-- Treat title/role prefixes as the same entity: "Crawler Frank Q" = "Frank Q". Match case-insensitively and ignore punctuation.
-
+- Treat title/role prefixes as the same entity: "Captain Frank Q" = "Frank Q". Match case-insensitively and ignore punctuation.
+${seriesRules}
 tag meanings:
 - in_world: a real entity inside the story world
 - real_world_ref: an actual real-world person/company/place referenced (Amazon, Charles Bronson)
@@ -169,7 +176,7 @@ Rules:
 - One row per entity within "new" (collect ALL its paragraph mentions into that row's mentions array).`;
 
 const describePrompt = (batch) =>
-  `You are writing reference descriptions of newly-introduced characters/entities in "Dungeon Crawler Carl" by Matt Dinniman.
+  `You are writing reference descriptions of newly-introduced characters/entities in "${seriesTitle}" by ${seriesAuthor}.
 
 For each entity below, write a 2-4 sentence "description" and assign a "significance" (major | supporting | minor | mentioned). Full-series spoilers are allowed; use well-established canon, but ground specific claims in the provided role hints / snippets and do not invent. Return one entry per input id.
 
@@ -185,7 +192,7 @@ for (let i = 0; i < sectionFiles.length; i++) {
   const res = await agentRetry(extractPrompt(path, index), {
     schema: extractSchema,
     phase: 'Extract',
-    label: `extract:${label}`,
+    label: `${seriesId}:extract:${label}`,
   });
   if (!res) continue;
 
@@ -236,7 +243,7 @@ for (let i = 0; i < toDescribe.length; i += BATCH) {
   })));
 }
 const describeResults = await parallel(batches.map((batch, bi) => () =>
-  agentRetry(describePrompt(batch), { schema: describeSchema, phase: 'Describe', label: `describe:batch-${bi + 1}` }),
+  agentRetry(describePrompt(batch), { schema: describeSchema, phase: 'Describe', label: `${seriesId}:describe:batch-${bi + 1}` }),
 ));
 const descById = new Map();
 for (const r of describeResults) {
