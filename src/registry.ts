@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveSeriesOrExit } from "./series.js";
 import type {
   BookSections,
   ChapterFindings,
@@ -296,15 +296,14 @@ export function dedupe(registry: Registry): { registry: Registry; merged: number
 }
 
 function main(): void {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const repoRoot = join(here, "..");
-  const query = process.argv.slice(2).join(" ");
+  const usage = 'npm run lookup -- --series <id> "<name to look up>"';
+  const { paths, rest } = resolveSeriesOrExit(process.argv.slice(2), usage);
+  const query = rest.join(" ");
   if (!query) {
-    console.error('usage: tsx src/registry.ts "<name to look up>"');
+    console.error(`usage: ${usage}`);
     process.exit(1);
   }
-  const registryPath = join(repoRoot, "output", "registry.json");
-  const registry = JSON.parse(readFileSync(registryPath, "utf8")) as Registry;
+  const registry = JSON.parse(readFileSync(paths.registry, "utf8")) as Registry;
   const hits = lookup(registry, query);
   if (hits.length === 0) {
     console.log(`No match for "${query}".`);

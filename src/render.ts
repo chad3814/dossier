@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { anchorSortKey, buildSectionOrder, type SectionOrder } from "./registry.js";
+import { resolveSeriesOrExit } from "./series.js";
 import type { EntityType, Registry, RegistryEntity } from "./types.js";
 
 /** The earliest anchor by true reading order (spine when available, else heuristic). */
@@ -139,12 +140,11 @@ export function renderMarkdown(registry: Registry): string {
 }
 
 function main(): void {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const repoRoot = join(here, "..");
-  const inArg = process.argv[2] ?? "output/registry.json";
-  const inPath = join(repoRoot, inArg);
-  const registry = JSON.parse(readFileSync(inPath, "utf8")) as Registry;
-  const outPath = process.argv[3] ? join(repoRoot, process.argv[3]) : join(repoRoot, "output", "characters.md");
+  const { paths, rest } = resolveSeriesOrExit(process.argv.slice(2), "npm run render -- --series <id> [--out <path>]");
+  const outIdx = rest.indexOf("--out");
+  const outArg = outIdx >= 0 ? rest[outIdx + 1] : undefined;
+  const outPath = outArg ? resolve(outArg) : join(paths.outputDir, "characters.md");
+  const registry = JSON.parse(readFileSync(paths.registry, "utf8")) as Registry;
   writeFileSync(outPath, renderMarkdown(registry), "utf8");
   console.log(`Rendered ${registry.entities.length} entities -> ${outPath}`);
 }
