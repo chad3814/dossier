@@ -1,8 +1,9 @@
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { dirname, join, posix } from "node:path";
+import { join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import AdmZip from "adm-zip";
 import { parse } from "node-html-parser";
+import { resolveSeriesOrExit } from "./series.js";
 import type { BookManifest, Chunk, EntryType, Section, SpineEntry } from "./types.js";
 
 const FRONT_MATTER =
@@ -229,21 +230,22 @@ function bookNumberFromPath(epubPath: string): number {
 }
 
 function main(): void {
-  const epubArg = process.argv[2];
-  if (!epubArg) {
-    console.error("usage: tsx src/preprocess.ts <book.epub>");
+  const usage = "npm run preprocess -- --series <id> <bookNumber | path/to/book.epub>";
+  const { paths, rest } = resolveSeriesOrExit(process.argv.slice(2), usage);
+  const arg = rest[0];
+  if (!arg) {
+    console.error(`usage: ${usage}`);
     process.exit(1);
   }
-  const here = dirname(fileURLToPath(import.meta.url));
-  const repoRoot = join(here, "..");
-  const epubPath = join(repoRoot, epubArg);
-  const bookNumber = bookNumberFromPath(epubArg);
+  const asNumber = /^\d+$/.test(arg) ? Number.parseInt(arg, 10) : null;
+  const bookNumber = asNumber ?? bookNumberFromPath(arg);
+  const epubPath = asNumber !== null ? paths.epub(asNumber) : resolve(arg);
 
   const zip = new AdmZip(epubPath);
   const sections = buildSections(zip);
 
-  const outDir = join(repoRoot, "data", `book${bookNumber}`);
-  const sectionDir = join(outDir, "sections");
+  const outDir = paths.bookDir(bookNumber);
+  const sectionDir = paths.sectionsDir(bookNumber);
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(sectionDir, { recursive: true });
 
@@ -265,15 +267,15 @@ function main(): void {
 
   const manifest: BookManifest = {
     bookNumber,
-    sourceEpub: epubArg,
+    sourceEpub: relative(paths.root, epubPath),
     sections: manifestSections,
     sectionCount: sections.length,
     totalWords,
   };
-  writeFileSync(join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+  writeFileSync(paths.manifest(bookNumber), JSON.stringify(manifest, null, 2), "utf8");
 
   console.log(
-    `book${bookNumber}: ${sections.length} sections, ~${totalWords} words -> ${outDir}`,
+    `${paths.id} book${bookNumber}: ${sections.length} sections, ~${totalWords} words -> ${outDir}`,
   );
 }
 

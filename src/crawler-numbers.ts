@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanAliases, lookup } from "./registry.js";
+import { requireStep, resolveSeriesOrExit } from "./series.js";
 import type { Registry } from "./types.js";
 
 const Q = "[\"“”'‘’]";
@@ -54,21 +55,25 @@ export function attachCrawlerNumbers(registry: Registry, texts: string[]): { att
 }
 
 function main(): void {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const repoRoot = join(here, "..");
-  const registryPath = join(repoRoot, "output", "registry.json");
-  const registry = JSON.parse(readFileSync(registryPath, "utf8")) as Registry;
+  const { paths, profile } = resolveSeriesOrExit(process.argv.slice(2), "npm run crawler-numbers -- --series <id>");
+  try {
+    requireStep(profile, "crawlerNumbers");
+  } catch (e) {
+    console.error(`crawler-numbers: ${(e as Error).message}`);
+    process.exit(1);
+  }
+  const registry = JSON.parse(readFileSync(paths.registry, "utf8")) as Registry;
 
   const texts: string[] = [];
   for (const book of registry.booksProcessed) {
-    const dir = join(repoRoot, "data", `book${book}`, "sections");
+    const dir = paths.sectionsDir(book);
     for (const file of readdirSync(dir)) {
       if (file.endsWith(".txt")) texts.push(readFileSync(join(dir, file), "utf8"));
     }
   }
 
   const { attached } = attachCrawlerNumbers(registry, texts);
-  writeFileSync(registryPath, JSON.stringify(registry, null, 2), "utf8");
+  writeFileSync(paths.registry, JSON.stringify(registry, null, 2) + "\n", "utf8");
   console.log(`crawler-numbers: attached ${attached} Crawler #ID aliases across books ${registry.booksProcessed.join(", ")}`);
 }
 

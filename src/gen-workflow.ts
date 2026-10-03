@@ -1,7 +1,8 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { toIndex } from "./registry.js";
+import { resolveSeriesOrExit } from "./series.js";
 import type { BookManifest, Registry } from "./types.js";
 
 const START = "// ===== per-book constants";
@@ -38,30 +39,31 @@ export function injectConstants(scriptSource: string, constants: string): string
 function main(): void {
   const here = dirname(fileURLToPath(import.meta.url));
   const repoRoot = join(here, "..");
-  const bookNumber = Number.parseInt(process.argv[2] ?? "", 10);
+  const usage = "npm run gen-workflow -- --series <id> <bookNumber>";
+  const { paths, rest } = resolveSeriesOrExit(process.argv.slice(2), usage);
+  const bookNumber = Number.parseInt(rest[0] ?? "", 10);
   if (!Number.isFinite(bookNumber)) {
-    console.error("usage: tsx src/gen-workflow.ts <bookNumber>");
+    console.error(`usage: ${usage}`);
     process.exit(1);
   }
 
-  const registry = JSON.parse(readFileSync(join(repoRoot, "output", "registry.json"), "utf8")) as Registry;
-  const manifest = JSON.parse(
-    readFileSync(join(repoRoot, "data", `book${bookNumber}`, "manifest.json"), "utf8"),
-  ) as BookManifest;
+  const registry = JSON.parse(readFileSync(paths.registry, "utf8")) as Registry;
+  const manifest = JSON.parse(readFileSync(paths.manifest(bookNumber), "utf8")) as BookManifest;
 
-  const sectionDir = join(repoRoot, "data", `book${bookNumber}`, "sections");
+  const sectionDir = paths.sectionsDir(bookNumber);
   const sectionFiles = manifest.sections.map((s) => s.file);
   const reprocessing = registry.booksProcessed.includes(bookNumber);
   const startIndex = reprocessing ? [] : toIndex(registry);
   const startBooksProcessed = registry.booksProcessed.filter((b) => b !== bookNumber);
 
-  const scriptPath = join(repoRoot, "data", "_wf", "book-extract.js");
-  const source = readFileSync(scriptPath, "utf8");
+  mkdirSync(paths.wfDir, { recursive: true });
+  const dest = join(paths.wfDir, "book-extract.js");
+  copyFileSync(join(repoRoot, "workflow", "book-extract.js"), dest);
   const constants = buildConstants(bookNumber, sectionDir, sectionFiles, startIndex, startBooksProcessed);
-  writeFileSync(scriptPath, injectConstants(source, constants), "utf8");
+  writeFileSync(dest, injectConstants(readFileSync(dest, "utf8"), constants), "utf8");
 
   console.log(
-    `gen-workflow: book ${bookNumber} — ${sectionFiles.length} sections, seeded from ${startIndex.length} prior entities (books ${startBooksProcessed.join(", ") || "none"})`,
+    `gen-workflow: ${paths.id} book ${bookNumber} — ${sectionFiles.length} sections, seeded from ${startIndex.length} prior entities (books ${startBooksProcessed.join(", ") || "none"}) -> ${dest}`,
   );
 }
 
