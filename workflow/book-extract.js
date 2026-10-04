@@ -256,8 +256,18 @@ for (const ent of newById.values()) {
 }
 
 log(`Done: ${newById.size} new entities, ${matched.length} matched mentions for book ${bookNumber}`);
+
+// Arrays crossing the workflow VM boundary are capped at 4096 items, and a long book easily
+// logs more matched mentions than that. Return both lists in chunks; the caller flattens them
+// (matched = matchedChunks.flat(), newEntities = newEntityChunks.flat()) when saving the delta.
+const CHUNK = 4000;
+const chunk = (arr) => {
+  const out = [];
+  for (let i = 0; i < arr.length; i += CHUNK) out.push(arr.slice(i, i + CHUNK));
+  return out;
+};
 return {
   booksProcessed: [...startBooksProcessed, bookNumber],
-  matched,
-  newEntities: [...newById.values()],
+  matchedChunks: chunk(matched),
+  newEntityChunks: chunk([...newById.values()]),
 };

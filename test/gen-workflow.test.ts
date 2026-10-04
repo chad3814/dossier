@@ -71,4 +71,11 @@ describe("workflow/book-extract.js template", () => {
     expect(src).toContain("${seriesRules}");
     expect(src).toContain("meta = {\n  name: 'dossier-extract-incremental'");
   });
+
+  it("returns matched mentions and new entities in chunks under the runner's 4096-item array cap", () => {
+    expect(src).toMatch(/const CHUNK = 4000;/);
+    expect(src).toContain("matchedChunks");
+    expect(src).toContain("newEntityChunks");
+    expect(src).not.toMatch(/return \{[^}]*\bmatched,/);
+  });
 });
