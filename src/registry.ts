@@ -12,9 +12,14 @@ import type {
   Significance,
 } from "./types.js";
 
-/** Normalize a name for matching: lowercase, strip punctuation, collapse spaces. */
+/**
+ * Normalize a name for matching: fold diacritics (Deaglán → deaglan), lowercase, strip
+ * punctuation, collapse spaces. Mirrored inline in workflow/book-extract.js — keep in sync.
+ */
 export function normalizeName(name: string): string {
   return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[‘’']/g, "")
     .replace(/[^a-z0-9]+/g, " ")

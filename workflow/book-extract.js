@@ -21,7 +21,7 @@ const seriesNotes = [];          // series-specific prompt rules from <series>/s
 
 // deterministic helpers mirroring src/registry.ts (the sandbox can't import project files)
 function normalizeName(name) {
-  return name.toLowerCase().replace(/[‘’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[‘’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 }
 function makeId(name, existing) {
   const base = normalizeName(name).replace(/\s+/g, '-') || 'entity';

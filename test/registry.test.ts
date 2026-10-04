@@ -270,3 +270,12 @@ describe("readRegistryOrEmpty", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("normalizeName folds diacritics", () => {
+  it("transliterates accented letters instead of dropping them, so ids stay readable", () => {
+    expect(normalizeName("Deaglán ap Cristoval")).toBe("deaglan ap cristoval");
+    expect(normalizeName("Caer Áras")).toBe("caer aras");
+    expect(normalizeName("Rónán")).toBe("ronan");
+    expect(normalizeName("Gráinne's farm")).toBe("grainnes farm");
+  });
+});

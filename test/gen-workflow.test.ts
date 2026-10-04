@@ -79,3 +79,12 @@ describe("workflow/book-extract.js template", () => {
     expect(src).not.toMatch(/return \{[^}]*\bmatched,/);
   });
 });
+
+describe("workflow/book-extract.js normalizeName stays in sync with src/registry.ts", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(join(here, "..", "workflow", "book-extract.js"), "utf8");
+  it("folds diacritics the same way (NFD + strip combining marks)", () => {
+    expect(src).toContain(".normalize('NFD')");
+    expect(src).toMatch(/\\u0300-\\u036f/);
+  });
+});
