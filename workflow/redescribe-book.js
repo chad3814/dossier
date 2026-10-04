@@ -139,4 +139,13 @@ for (let i = 0; i < chapters.length; i++) {
 }
 
 log(`Done: book ${bookNumber}, ${descriptionEvents.length} description + ${aliasEvents.length} alias versions`);
-return { bookNumber, descriptionEvents, aliasEvents };
+
+// Arrays crossing the workflow VM boundary are capped at 4096 items. Return both event lists
+// in chunks; the caller flattens them (descriptionEventChunks.flat(), aliasEventChunks.flat()).
+const CHUNK = 4000;
+const chunk = (arr) => {
+  const out = [];
+  for (let i = 0; i < arr.length; i += CHUNK) out.push(arr.slice(i, i + CHUNK));
+  return out;
+};
+return { bookNumber, descriptionEventChunks: chunk(descriptionEvents), aliasEventChunks: chunk(aliasEvents) };

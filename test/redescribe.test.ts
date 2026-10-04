@@ -184,3 +184,14 @@ describe("workflow/redescribe-book.js template", () => {
     expect(src).toContain("meta = {\n  name: 'dossier-redescribe-incremental'");
   });
 });
+
+describe("workflow/redescribe-book.js return shape", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(join(here, "..", "workflow", "redescribe-book.js"), "utf8");
+  it("returns description and alias events in chunks under the runner's 4096-item array cap", () => {
+    expect(src).toMatch(/const CHUNK = 4000;/);
+    expect(src).toContain("descriptionEventChunks");
+    expect(src).toContain("aliasEventChunks");
+    expect(src).not.toMatch(/return \{ bookNumber, descriptionEvents, aliasEvents \}/);
+  });
+});
