@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { applyCorrections } from "../src/apply-corrections.js";
+import { applyCorrections, readJsonArrayIfExists } from "../src/apply-corrections.js";
 import type { AliasEvent, DescriptionEvent, Registry } from "../src/types.js";
 
 const ent = (id: string, canonicalName: string, aliases: string[], appearances: string[]) => ({
@@ -217,5 +220,15 @@ describe("applyCorrections", () => {
     expect(byId["host"]!.aliases).not.toContain("the visitor");
     expect(byId["target"]!.aliases).toContain("the visitor");
     expect(out.aliases).toEqual([{ id: "target", anchor: "B1·C1·¶1", alias: "the visitor" }]);
+  });
+});
+
+describe("readJsonArrayIfExists", () => {
+  it("returns null for a missing file (pre-redescribe series) and the parsed array otherwise", () => {
+    const dir = mkdtempSync(join(tmpdir(), "corr-"));
+    expect(readJsonArrayIfExists(join(dir, "nope.json"))).toBeNull();
+    writeFileSync(join(dir, "aliases.json"), JSON.stringify([{ id: "a", anchor: "B1·C1·¶1", alias: "A" }]), "utf8");
+    expect(readJsonArrayIfExists(join(dir, "aliases.json"))).toEqual([{ id: "a", anchor: "B1·C1·¶1", alias: "A" }]);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

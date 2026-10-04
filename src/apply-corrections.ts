@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDroppableAlias } from "./alias-clean.js";
@@ -25,6 +25,12 @@ export interface ApplyOutput {
   registry: Registry;
   aliases: AliasEvent[];
   descriptions: DescriptionEvent[];
+}
+
+/** Parse a JSON array file, or null when it does not exist (e.g. event logs before re-describe). */
+export function readJsonArrayIfExists<T>(path: string): T[] | null {
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, "utf8")) as T[];
 }
 
 /** Deep-clone a plain JSON-serializable value. */
@@ -203,17 +209,20 @@ function main(): void {
   const correctionsPath = paths.corrections;
 
   const registry = JSON.parse(readFileSync(registryPath, "utf8")) as Registry;
-  const aliases = JSON.parse(readFileSync(aliasesPath, "utf8")) as AliasEvent[];
-  const descriptions = JSON.parse(readFileSync(descriptionsPath, "utf8")) as DescriptionEvent[];
+  // A series that has not had its re-describe pass yet has no event logs; correct the registry
+  // alone and leave the (absent) logs absent rather than inventing empty ones.
+  const aliases = readJsonArrayIfExists<AliasEvent>(aliasesPath);
+  const descriptions = readJsonArrayIfExists<DescriptionEvent>(descriptionsPath);
   const corrections = JSON.parse(readFileSync(correctionsPath, "utf8")) as Corrections;
 
-  const out = applyCorrections({ registry, aliases, descriptions, corrections });
+  const out = applyCorrections({ registry, aliases: aliases ?? [], descriptions: descriptions ?? [], corrections });
 
   writeFileSync(registryPath, JSON.stringify(out.registry, null, 2) + "\n", "utf8");
-  writeFileSync(aliasesPath, JSON.stringify(out.aliases, null, 2) + "\n", "utf8");
-  writeFileSync(descriptionsPath, JSON.stringify(out.descriptions, null, 2) + "\n", "utf8");
+  if (aliases) writeFileSync(aliasesPath, JSON.stringify(out.aliases, null, 2) + "\n", "utf8");
+  if (descriptions) writeFileSync(descriptionsPath, JSON.stringify(out.descriptions, null, 2) + "\n", "utf8");
 
-  console.log("apply-corrections: done.");
+  const skipped = [!aliases && "aliases.json", !descriptions && "descriptions.json"].filter(Boolean);
+  console.log(`apply-corrections: done.${skipped.length ? ` (no ${skipped.join(" / ")} yet — registry only)` : ""}`);
 }
 
 const invokedDirectly = process.argv[1] === fileURLToPath(import.meta.url);
