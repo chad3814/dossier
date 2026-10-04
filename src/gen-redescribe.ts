@@ -3,15 +3,18 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chapterEntities } from "./log.js";
 import { isNoiseAlias } from "./alias-clean.js";
-import { anchorSortKey, normalizeAnchor } from "./registry.js";
+import { anchorSortKey, buildSectionOrder, normalizeAnchor, readRegistryOrEmpty, type SectionOrder } from "./registry.js";
 import { promptMeta, resolveSeriesOrExit } from "./series.js";
 import type { SeriesPromptMeta } from "./series.js";
 import type { BookManifest, DescriptionEvent, EntityType, RegistryDelta } from "./types.js";
 
-function cmp(a: string, b: string): number {
-  const ka = anchorSortKey(a);
-  const kb = anchorSortKey(b);
-  return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
+/** Anchor comparator bound to the registry's spine order (heuristic fallback for unknown labels). */
+function cmpWith(order: SectionOrder): (a: string, b: string) => number {
+  return (a, b) => {
+    const ka = anchorSortKey(a, order);
+    const kb = anchorSortKey(b, order);
+    return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
+  };
 }
 
 interface RedescribeInput {
@@ -21,6 +24,8 @@ interface RedescribeInput {
   index: Array<{ id: string; canonicalName: string; type: EntityType }>;
   priorEvents: DescriptionEvent[];
   aliasesById: Record<string, string[]>;
+  /** The registry's spine order; needed to pick the LATEST prior version when labels tie. */
+  order?: SectionOrder;
 }
 
 export interface RedescribeConstants {
@@ -63,6 +68,7 @@ export function buildRedescribeConstants(input: RedescribeInput): RedescribeCons
     if (m) entityMeta[id] = { canonicalName: m.canonicalName, type: m.type };
   }
 
+  const cmp = cmpWith(input.order ?? buildSectionOrder());
   const latest = new Map<string, DescriptionEvent>();
   for (const ev of input.priorEvents) {
     const cur = latest.get(ev.id);
@@ -121,6 +127,7 @@ function main(): void {
   }
 
   const seriesLog = paths.logDir;
+  const order = buildSectionOrder(readRegistryOrEmpty(paths.registry).books);
   const deltas = readdirSync(seriesLog)
     .filter((f) => /^delta-book\d+\.json$/.test(f))
     .map((f) => JSON.parse(readFileSync(join(seriesLog, f), "utf8")) as RegistryDelta);
@@ -145,6 +152,7 @@ function main(): void {
     index,
     priorEvents,
     aliasesById,
+    order,
   });
 
   const sectionDir = paths.sectionsDir(bookNumber);

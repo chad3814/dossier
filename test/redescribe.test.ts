@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRedescribeConstants, renderRedescribeBlock } from "../src/gen-redescribe.js";
 import { isNoiseAlias, reconcileAliases } from "../src/reconcile-aliases.js";
+import { buildSectionOrder } from "../src/registry.js";
 import { validateAliases, validateDescriptions } from "../src/validate-descriptions.js";
 import type { AliasEvent, DescriptionEvent, Registry, RegistryEntity } from "../src/types.js";
 
@@ -221,5 +222,39 @@ describe("validateDescriptions / validateAliases use the registry's spine order"
       { id: "luceum", anchor: "B1·Synchronism·¶20", description: "b", significance: "minor" },
     ];
     expect(validateDescriptions(spine, evs).errors.some((e) => /order/i.test(e))).toBe(true);
+  });
+});
+
+describe("spine order in reconcileAliases and buildRedescribeConstants", () => {
+  const books = [{ number: 1, sections: ["C1", "Synchronism", "Synchronism-2"] }];
+
+  it("reconcileAliases keeps the EARLIEST anchor by spine order", () => {
+    const r: Registry = {
+      booksProcessed: [1],
+      entities: [mk({ id: "luceum", canonicalName: "Luceum", aliases: ["the gate"], appearances: ["B1·Synchronism·¶20", "B1·Synchronism-2·¶16"] })],
+      books,
+    };
+    const out = reconcileAliases(r, [
+      { id: "luceum", anchor: "B1·Synchronism-2·¶16", alias: "the gate" },
+      { id: "luceum", anchor: "B1·Synchronism·¶20", alias: "the gate" },
+    ]);
+    expect(out).toEqual([{ id: "luceum", anchor: "B1·Synchronism·¶20", alias: "the gate" }]);
+  });
+
+  it("buildRedescribeConstants seeds the LATEST prior description by spine order", () => {
+    const priorEvents: DescriptionEvent[] = [
+      { id: "luceum", anchor: "B1·Synchronism·¶20", description: "earlier", significance: "minor" },
+      { id: "luceum", anchor: "B1·Synchronism-2·¶16", description: "later", significance: "minor" },
+    ];
+    const c = buildRedescribeConstants({
+      bookNumber: 2,
+      manifestSections: [{ label: "C1", file: "001-C1.txt" }],
+      chapterMap: new Map([["B2·C1", [{ id: "luceum", anchor: "B2·C1·¶3" }]]]),
+      index: [{ id: "luceum", canonicalName: "Luceum", type: "other" }],
+      priorEvents,
+      aliasesById: {},
+      order: buildSectionOrder(books),
+    });
+    expect(c.seed["luceum"]!.description).toBe("later");
   });
 });

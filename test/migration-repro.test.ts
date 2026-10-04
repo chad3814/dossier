@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { materialize } from "../src/log.js";
+import { buildSectionOrder } from "../src/registry.js";
 import { registryReproEquals, snapshotDiagnostic } from "../src/migrate-to-log.js";
 import { synthesizeLog } from "../src/synthesize.js";
 import type { Registry } from "../src/types.js";
@@ -62,7 +63,7 @@ describe("snapshotDiagnostic", () => {
 describe.skipIf(seriesIds.length === 0)("log reproduction per series", () => {
   it.each(seriesIds)("%s: materialize(synthesizeLog(registry)) reproduces registry.json exactly", (id) => {
     const registry = JSON.parse(readFileSync(join(casefilesRoot, id, "output", "registry.json"), "utf8")) as Registry;
-    const full = materialize(synthesizeLog(registry));
+    const full = materialize(synthesizeLog(registry), {}, { order: buildSectionOrder(registry.books) });
     expect(full.entities.length).toBe(registry.entities.length);
     // Phase 2 regenerates `description` and `significance` as versioned events, so exclude
     // them here; the appearance structure (ids, appearances, aliases, tags, firstAppearance)

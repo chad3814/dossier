@@ -1,14 +1,15 @@
-import { anchorSortKey, normalizeAnchor } from "./registry.js";
+import { anchorSortKey, buildSectionOrder, normalizeAnchor, type SectionOrder } from "./registry.js";
 import type { Registry, RegistryDelta, RegistryEntity } from "./types.js";
 
 function bookOf(anchor: string): number {
   return anchorSortKey(normalizeAnchor(anchor))[0];
 }
 
-function sortAnchors(anchors: string[]): string[] {
+/** Reading-order sort using the registry's spine order (heuristic fallback for unknown labels). */
+function sortAnchors(anchors: string[], order: SectionOrder): string[] {
   return [...anchors].sort((a, b) => {
-    const ka = anchorSortKey(a);
-    const kb = anchorSortKey(b);
+    const ka = anchorSortKey(a, order);
+    const kb = anchorSortKey(b, order);
     return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
   });
 }
@@ -27,6 +28,7 @@ function sortAnchors(anchors: string[]): string[] {
  * Returns the per-book deltas in book order.
  */
 export function synthesizeLog(registry: Registry): RegistryDelta[] {
+  const order = buildSectionOrder(registry.books);
   const byBook = new Map<number, RegistryDelta>();
   const ensure = (b: number): RegistryDelta => {
     let d = byBook.get(b);
@@ -43,7 +45,7 @@ export function synthesizeLog(registry: Registry): RegistryDelta[] {
     // Introduce at the EARLIEST appearance's book — registry.firstAppearance is the
     // (post-dedupe) primary's first sighting and can be later than a merged member's
     // earliest anchor, so it is not a reliable introduction point.
-    const earliest = sortAnchors(anchors)[0] as string;
+    const earliest = sortAnchors(anchors, order)[0] as string;
     const introBook = bookOf(earliest);
 
     const byBookAnchors = new Map<number, string[]>();
@@ -55,7 +57,7 @@ export function synthesizeLog(registry: Registry): RegistryDelta[] {
     }
 
     for (const [b, bAnchors] of byBookAnchors) {
-      const sorted = sortAnchors(bAnchors);
+      const sorted = sortAnchors(bAnchors, order);
       if (b === introBook) {
         const intro: RegistryEntity = {
           ...e,

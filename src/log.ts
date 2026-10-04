@@ -1,10 +1,14 @@
-import { anchorSortKey, cleanAliases, normalizeAnchor, resolveGroup } from "./registry.js";
+import { anchorSortKey, cleanAliases, normalizeAnchor, resolveGroup, type SectionOrder } from "./registry.js";
 import type { AliasEvent, AliasSupplement, Cutoff, DescriptionEvent, MergeMap, Registry, RegistryDelta, RegistryEntity } from "./types.js";
 
-/** Total order over anchors by [book, section, paragraph], for sorting/comparison. */
-function cmpAnchor(a: string, b: string): number {
-  const ka = anchorSortKey(a);
-  const kb = anchorSortKey(b);
+/**
+ * Total order over anchors by [book, section, paragraph]. Pass the registry's spine `order`
+ * whenever it is known; without it, section position falls back to the label heuristic, which
+ * cannot order two non-standard labels in one book (e.g. `Synchronism` vs `Synchronism-2`).
+ */
+function cmpAnchor(a: string, b: string, order?: SectionOrder): number {
+  const ka = anchorSortKey(a, order);
+  const kb = anchorSortKey(b, order);
   return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
 }
 
@@ -13,10 +17,10 @@ function cmpAnchor(a: string, b: string): number {
  * A chapter cutoff ("B2·C4") includes the whole chapter; a paragraph cutoff
  * ("B2·C4·¶7") is inclusive at that paragraph. No cutoff ⇒ always true.
  */
-export function withinCutoff(anchor: string, cutoff?: Cutoff): boolean {
+export function withinCutoff(anchor: string, cutoff?: Cutoff, order?: SectionOrder): boolean {
   if (!cutoff) return true;
-  const a = anchorSortKey(normalizeAnchor(anchor));
-  const k = anchorSortKey(normalizeAnchor(cutoff));
+  const a = anchorSortKey(normalizeAnchor(anchor), order);
+  const k = anchorSortKey(normalizeAnchor(cutoff), order);
   const cutoffPara = cutoff.includes("¶") ? k[2] : Number.POSITIVE_INFINITY;
   if (a[0] !== k[0]) return a[0] < k[0];
   if (a[1] !== k[1]) return a[1] < k[1];
@@ -31,17 +35,11 @@ function newBookOf(delta: RegistryDelta): number {
   return delta.booksProcessed.length ? Math.max(...delta.booksProcessed) : 0;
 }
 
-function firstAnchorOf(ne: RegistryEntity): string | null {
+function firstAnchorOf(ne: RegistryEntity, order?: SectionOrder): string | null {
   // Gate the introduction on the EARLIEST appearance, not the firstAppearance field:
   // after dedupe, registry.firstAppearance can be later than a merged member's earliest
   // anchor, and an entity must be introduced before any of its appearances are folded.
-  const sorted = ne.appearances
-    .map(normalizeAnchor)
-    .sort((a, b) => {
-      const ka = anchorSortKey(a);
-      const kb = anchorSortKey(b);
-      return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
-    });
+  const sorted = ne.appearances.map(normalizeAnchor).sort((a, b) => cmpAnchor(a, b, order));
   if (sorted.length > 0) return sorted[0] as string;
   return ne.firstAppearance ? normalizeAnchor(ne.firstAppearance.anchor) : null;
 }
@@ -57,16 +55,23 @@ function firstAnchorOf(ne: RegistryEntity): string | null {
 export function materialize(
   deltas: RegistryDelta[],
   mergeMap: MergeMap = {},
-  options: { upTo?: Cutoff; aliasSupplement?: AliasSupplement; descriptions?: DescriptionEvent[]; aliases?: AliasEvent[] } = {},
+  options: {
+    upTo?: Cutoff;
+    aliasSupplement?: AliasSupplement;
+    descriptions?: DescriptionEvent[];
+    aliases?: AliasEvent[];
+    /** The registry's spine order (buildSectionOrder(registry.books)); heuristic when omitted. */
+    order?: SectionOrder;
+  } = {},
 ): Registry {
-  const { upTo, aliasSupplement = {} } = options;
+  const { upTo, aliasSupplement = {}, order } = options;
   const raw = new Map<string, RegistryEntity>();
 
   for (const delta of [...deltas].sort((a, b) => newBookOf(a) - newBookOf(b))) {
     for (const ne of delta.newEntities) {
-      const first = firstAnchorOf(ne);
-      if (!first || !withinCutoff(first, upTo)) continue; // introduced after the cutoff
-      const keptAnchors = [...new Set(ne.appearances.map(normalizeAnchor).filter((a) => withinCutoff(a, upTo)))];
+      const first = firstAnchorOf(ne, order);
+      if (!first || !withinCutoff(first, upTo, order)) continue; // introduced after the cutoff
+      const keptAnchors = [...new Set(ne.appearances.map(normalizeAnchor).filter((a) => withinCutoff(a, upTo, order)))];
       const existing = raw.get(ne.id);
       if (existing) {
         for (const a of keptAnchors) if (!existing.appearances.includes(a)) existing.appearances.push(a);
@@ -77,7 +82,7 @@ export function materialize(
     }
     for (const m of delta.matched) {
       const anchor = normalizeAnchor(m.anchor);
-      if (!withinCutoff(anchor, upTo)) continue;
+      if (!withinCutoff(anchor, upTo, order)) continue;
       const entity = raw.get(m.id);
       if (!entity) continue; // intro gated out or unknown id — skip defensively
       if (!entity.appearances.includes(anchor)) entity.appearances.push(anchor);
@@ -96,7 +101,7 @@ export function materialize(
 
   const entities: RegistryEntity[] = [];
   for (const [canonicalId, group] of groups) {
-    const resolved = resolveGroup(group);
+    const resolved = resolveGroup(group, order);
     resolved.id = canonicalId;
     const extra = aliasSupplement[canonicalId];
     if (extra && extra.length > 0) {
@@ -118,9 +123,9 @@ export function materialize(
     for (const ev of options.descriptions) {
       if (!byId.has(ev.id)) continue;
       processed.add(ev.id);
-      if (!withinCutoff(ev.anchor, upTo)) continue;
+      if (!withinCutoff(ev.anchor, upTo, order)) continue;
       const cur = latest.get(ev.id);
-      if (!cur || cmpAnchor(normalizeAnchor(ev.anchor), normalizeAnchor(cur.anchor)) > 0) latest.set(ev.id, ev);
+      if (!cur || cmpAnchor(normalizeAnchor(ev.anchor), normalizeAnchor(cur.anchor), order) > 0) latest.set(ev.id, ev);
     }
     for (const id of processed) {
       const e = byId.get(id) as RegistryEntity;
@@ -136,7 +141,7 @@ export function materialize(
     for (const ev of options.aliases) {
       if (!byId.has(ev.id)) continue;
       processed.add(ev.id);
-      if (!withinCutoff(ev.anchor, upTo)) continue;
+      if (!withinCutoff(ev.anchor, upTo, order)) continue;
       const list = collected.get(ev.id) ?? [];
       list.push(ev.alias);
       collected.set(ev.id, list);

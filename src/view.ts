@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { materialize } from "./log.js";
+import { buildSectionOrder, readRegistryOrEmpty } from "./registry.js";
 import { renderMarkdown } from "./render.js";
 import { resolveOutPath, resolveSeriesOrExit } from "./series.js";
 import type { AliasEvent, DescriptionEvent, RegistryDelta } from "./types.js";
@@ -46,7 +47,9 @@ function main(): void {
   const aliases = existsSync(aliasPath)
     ? (JSON.parse(readFileSync(aliasPath, "utf8")) as AliasEvent[])
     : undefined;
-  const registry = materialize(deltas, {}, { upTo: args.through || undefined, descriptions, aliases });
+  // Spine order from the committed registry (books[] is manifest-derived and not in the log).
+  const order = buildSectionOrder(readRegistryOrEmpty(paths.registry).books);
+  const registry = materialize(deltas, {}, { upTo: args.through || undefined, descriptions, aliases, order });
   const at = args.through ? `through ${args.through}` : "full series";
 
   if (args.out) {

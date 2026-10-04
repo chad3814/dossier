@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { materialize } from "./log.js";
+import { buildSectionOrder } from "./registry.js";
 import { resolveSeriesOrExit } from "./series.js";
 import { synthesizeLog } from "./synthesize.js";
 import type { Registry, RegistryDelta } from "./types.js";
@@ -46,6 +47,7 @@ function main(): void {
     process.exit(1);
   }
   const registry = JSON.parse(readFileSync(paths.registry, "utf8")) as Registry;
+  const order = buildSectionOrder(registry.books);
 
   // 1. Synthesize the complete per-book log from the registry and write it.
   mkdirSync(paths.logDir, { recursive: true });
@@ -58,7 +60,7 @@ function main(): void {
   // 2. Read the written log back and verify full materialization reproduces the registry (hard gate).
   const files = readdirSync(paths.logDir).filter((f) => /^delta-book\d+\.json$/.test(f));
   const deltas = files.map((f) => JSON.parse(readFileSync(join(paths.logDir, f), "utf8")) as RegistryDelta);
-  const full = materialize(deltas);
+  const full = materialize(deltas, {}, { order });
   if (!registryReproEquals(full, registry)) {
     console.error(
       `migrate-to-log: FAILED reproduction — materialize(log) != registry.json ` +
@@ -73,7 +75,7 @@ function main(): void {
     const m = /^registry\.books1-(\d+)\.json$/.exec(f);
     if (!m) continue;
     const n = Number.parseInt(m[1] as string, 10);
-    const through = materialize(deltas, {}, { upTo: `B${n}·C99999` });
+    const through = materialize(deltas, {}, { upTo: `B${n}·C99999`, order });
     const snap = JSON.parse(readFileSync(join(paths.outputDir, f), "utf8")) as Registry;
     diags.push(`${f}: ${snapshotDiagnostic(through, snap)}`);
   }

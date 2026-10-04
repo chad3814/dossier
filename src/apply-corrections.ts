@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDroppableAlias } from "./alias-clean.js";
 import { correctionIdMap, resolveHistoricalId } from "./id-history.js";
-import { cleanAnchors, normalizeName } from "./registry.js";
+import { buildSectionOrder, cleanAnchors, normalizeName } from "./registry.js";
 import { resolveSeriesOrExit } from "./series.js";
 import type { AliasEvent, DescriptionEvent, Registry, RegistryEntity } from "./types.js";
 
@@ -72,6 +72,7 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
   const aliases: AliasEvent[] = clone(input.aliases);
   const descriptions: DescriptionEvent[] = clone(input.descriptions);
   const { corrections } = input;
+  const order = buildSectionOrder(registry.books);
 
   const byId = new Map<string, RegistryEntity>(
     registry.entities.map((e) => [e.id, e]),
@@ -162,7 +163,7 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
     if (!fromEntity || !intoEntity) continue;
 
     // Merge appearances: normalize, dedupe, and sort into canonical reading order.
-    intoEntity.appearances = cleanAnchors([...intoEntity.appearances, ...fromEntity.appearances]);
+    intoEntity.appearances = cleanAnchors([...intoEntity.appearances, ...fromEntity.appearances], order);
 
     // Append aliases from `from` blob (deduped by normalizeName).
     // Skip any alias that would be droppable with respect to `into`, so the

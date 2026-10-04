@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { chapterEntities, materialize, withinCutoff } from "../src/log.js";
-import type { AliasEvent, DescriptionEvent, RegistryDelta } from "../src/types.js";
+import { buildSectionOrder } from "../src/registry.js";
+import type { AliasEvent, DescriptionEvent, RegistryDelta, RegistryEntity } from "../src/types.js";
 
 describe("withinCutoff", () => {
   it("returns true for every anchor when no cutoff is given", () => {
@@ -181,5 +182,32 @@ describe("chapterEntities", () => {
     expect(b1c1.find((e) => e.id === "carl")!.anchor).toBe("B1·C1·¶1");
     const b3c1 = map.get("B3·C1")!;
     expect(b3c1.map((e) => e.id)).toContain("carl");
+  });
+});
+
+describe("spine order threading (non-standard labels tie under the heuristic)", () => {
+  const order = buildSectionOrder([{ number: 1, sections: ["C1", "Synchronism", "Synchronism-2"] }]);
+  const luceum: RegistryEntity = {
+    id: "luceum", canonicalName: "Luceum", aliases: [], type: "other", tags: ["in_world"], significance: "minor",
+    description: "", firstAppearance: null, appearances: ["B1·C1·¶1", "B1·Synchronism-2·¶16", "B1·Synchronism·¶20"],
+  };
+  const d: RegistryDelta[] = [{ booksProcessed: [1], matched: [], newEntities: [luceum] }];
+  const descs: DescriptionEvent[] = [
+    { id: "luceum", anchor: "B1·Synchronism-2·¶16", description: "later", significance: "minor" },
+    { id: "luceum", anchor: "B1·Synchronism·¶20", description: "earlier", significance: "minor" },
+  ];
+
+  it("withinCutoff respects the spine order when given one", () => {
+    expect(withinCutoff("B1·Synchronism-2·¶16", "B1·Synchronism", order)).toBe(false);
+    expect(withinCutoff("B1·Synchronism·¶20", "B1·Synchronism-2", order)).toBe(true);
+  });
+
+  it("materialize picks the latest description and sorts appearances by the spine order", () => {
+    const full = materialize(d, {}, { descriptions: descs, order });
+    expect(full.entities[0]!.description).toBe("later");
+    expect(full.entities[0]!.appearances).toEqual(["B1·C1·¶1", "B1·Synchronism·¶20", "B1·Synchronism-2·¶16"]);
+    const at = materialize(d, {}, { upTo: "B1·Synchronism", descriptions: descs, order });
+    expect(at.entities[0]!.description).toBe("earlier");
+    expect(at.entities[0]!.appearances).toEqual(["B1·C1·¶1", "B1·Synchronism·¶20"]);
   });
 });

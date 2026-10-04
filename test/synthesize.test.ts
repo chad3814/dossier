@@ -82,3 +82,15 @@ describe("synthesizeLog", () => {
     expect(carl.aliases).toEqual(["the Crawler"]);
   });
 });
+
+describe("synthesizeLog uses the registry's spine order", () => {
+  it("sorts the intro book's appearances by books[] order, not the label heuristic", () => {
+    const reg: Registry = {
+      booksProcessed: [1],
+      entities: [mkEntity({ id: "luceum", canonicalName: "Luceum", appearances: ["B1·Synchronism-2·¶16", "B1·Synchronism·¶20", "B1·C1·¶1"] })],
+      books: [{ number: 1, sections: ["C1", "Synchronism", "Synchronism-2"] }],
+    };
+    const [d] = synthesizeLog(reg);
+    expect(d!.newEntities[0]!.appearances).toEqual(["B1·C1·¶1", "B1·Synchronism·¶20", "B1·Synchronism-2·¶16"]);
+  });
+});

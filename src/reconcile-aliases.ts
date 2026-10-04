@@ -4,16 +4,19 @@ import { fileURLToPath } from "node:url";
 import { isDroppableAlias } from "./alias-clean.js";
 import type { Corrections } from "./apply-corrections.js";
 import { correctionIdMap, resolveHistoricalId } from "./id-history.js";
-import { anchorSortKey, normalizeAnchor, normalizeName } from "./registry.js";
+import { anchorSortKey, buildSectionOrder, normalizeAnchor, normalizeName, type SectionOrder } from "./registry.js";
 import { resolveSeriesOrExit } from "./series.js";
 import type { AliasEvent, Registry, RegistryEntity } from "./types.js";
 
 export { isNoiseAlias } from "./alias-clean.js";
 
-function cmp(a: string, b: string): number {
-  const ka = anchorSortKey(a);
-  const kb = anchorSortKey(b);
-  return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
+/** Anchor comparator bound to the registry's spine order (heuristic fallback for unknown labels). */
+function cmpWith(order: SectionOrder): (a: string, b: string) => number {
+  return (a, b) => {
+    const ka = anchorSortKey(a, order);
+    const kb = anchorSortKey(b, order);
+    return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
+  };
 }
 
 /**
@@ -34,6 +37,7 @@ export function reconcileAliases(
   idMap: ReadonlyMap<string, string> = new Map(),
 ): AliasEvent[] {
   // 1. resolve historical ids + drop noise + keep earliest per (id, normalized alias)
+  const cmp = cmpWith(buildSectionOrder(registry.books));
   const byId = new Map<string, RegistryEntity>(registry.entities.map((e) => [e.id, e]));
   const currentIds = new Set<string>(byId.keys());
   const earliest = new Map<string, AliasEvent>();

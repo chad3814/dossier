@@ -127,3 +127,14 @@ describe("dedupe preserves registry metadata", () => {
     expect(out.books).toEqual([{ number: 1, title: "Book One", sections: ["C1"] }]);
   });
 });
+
+describe("dedupe sorts appearances by the registry's spine order", () => {
+  it("orders two non-standard sections by books[] position", () => {
+    const registry: Registry = {
+      booksProcessed: [1],
+      entities: [mkEntity({ id: "luceum", canonicalName: "Luceum", appearances: ["B1·Synchronism-2·¶16", "B1·Synchronism·¶20", "B1·C1·¶1"] })],
+      books: [{ number: 1, sections: ["C1", "Synchronism", "Synchronism-2"] }],
+    };
+    expect(dedupe(registry).registry.entities[0]!.appearances).toEqual(["B1·C1·¶1", "B1·Synchronism·¶20", "B1·Synchronism-2·¶16"]);
+  });
+});

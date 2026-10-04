@@ -246,7 +246,7 @@ export function cleanAnchors(anchors: string[], order?: SectionOrder): string[] 
 }
 
 /** Resolve a group of variant entities into one canonical entity (dedupe's merge logic). */
-export function resolveGroup(group: RegistryEntity[]): RegistryEntity {
+export function resolveGroup(group: RegistryEntity[], order?: SectionOrder): RegistryEntity {
   const primary = [...group].sort(
     (a, b) => b.appearances.length - a.appearances.length || a.canonicalName.length - b.canonicalName.length,
   )[0] as RegistryEntity;
@@ -269,7 +269,7 @@ export function resolveGroup(group: RegistryEntity[]): RegistryEntity {
   return {
     ...primary,
     aliases: cleanAliases(primary.canonicalName, [...aliasSet]),
-    appearances: cleanAnchors([...anchorSet]),
+    appearances: cleanAnchors([...anchorSet], order),
     tags: [...tagSet],
     description,
     significance,
@@ -287,6 +287,7 @@ export function resolveGroup(group: RegistryEntity[]): RegistryEntity {
  * appearances into reading order. Returns the new registry and the merge count.
  */
 export function dedupe(registry: Registry): { registry: Registry; merged: number } {
+  const order = buildSectionOrder(registry.books);
   const groups = new Map<string, RegistryEntity[]>();
   for (const e of registry.entities) {
     const key = mergeKey(e.canonicalName);
@@ -299,7 +300,7 @@ export function dedupe(registry: Registry): { registry: Registry; merged: number
   let merged = 0;
   for (const group of groups.values()) {
     merged += group.length - 1;
-    out.push(resolveGroup(group));
+    out.push(resolveGroup(group, order));
   }
 
   out.sort((a, b) => a.canonicalName.localeCompare(b.canonicalName));
