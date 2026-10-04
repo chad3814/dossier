@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolveSeriesOrExit } from "./series.js";
 import type {
@@ -111,6 +111,12 @@ export function foldFindings(registry: Registry, findings: ChapterFindings): Reg
 
 export function emptyRegistry(): Registry {
   return { booksProcessed: [], entities: [] };
+}
+
+/** Load a series registry, or an empty one when the series has no extracted books yet. */
+export function readRegistryOrEmpty(path: string): Registry {
+  if (!existsSync(path)) return emptyRegistry();
+  return JSON.parse(readFileSync(path, "utf8")) as Registry;
 }
 
 /**

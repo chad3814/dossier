@@ -1,10 +1,10 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { toIndex } from "./registry.js";
+import { readRegistryOrEmpty, toIndex } from "./registry.js";
 import { promptMeta, resolveSeriesOrExit } from "./series.js";
 import type { SeriesPromptMeta } from "./series.js";
-import type { BookManifest, Registry } from "./types.js";
+import type { BookManifest } from "./types.js";
 
 const START = "// ===== per-book constants";
 const END = "// ===================================================";
@@ -53,7 +53,7 @@ function main(): void {
     process.exit(1);
   }
 
-  const registry = JSON.parse(readFileSync(paths.registry, "utf8")) as Registry;
+  const registry = readRegistryOrEmpty(paths.registry); // empty for a series' first book
   const manifest = JSON.parse(readFileSync(paths.manifest(bookNumber), "utf8")) as BookManifest;
 
   const sectionDir = paths.sectionsDir(bookNumber);

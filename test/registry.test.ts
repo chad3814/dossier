@@ -1,6 +1,10 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   applyDelta,
+  readRegistryOrEmpty,
   emptyRegistry,
   foldFindings,
   lookup,
@@ -250,5 +254,19 @@ describe("applyDelta preserves registry metadata", () => {
     const delta: RegistryDelta = { booksProcessed: [2], matched: [], newEntities: [] };
     const { registry: out } = applyDelta(reg, delta);
     expect(out.books).toEqual([{ number: 1, title: "Book One", sections: ["C1"] }]);
+  });
+});
+
+describe("readRegistryOrEmpty", () => {
+  it("returns an empty registry when the file does not exist yet (first book of a new series)", () => {
+    expect(readRegistryOrEmpty("/definitely/not/here/registry.json")).toEqual({ booksProcessed: [], entities: [] });
+  });
+
+  it("parses an existing registry", () => {
+    const dir = mkdtempSync(join(tmpdir(), "reg-"));
+    const p = join(dir, "registry.json");
+    writeFileSync(p, JSON.stringify({ booksProcessed: [1], entities: [], books: [{ number: 1, sections: ["C1"] }] }), "utf8");
+    expect(readRegistryOrEmpty(p)).toEqual({ booksProcessed: [1], entities: [], books: [{ number: 1, sections: ["C1"] }] });
+    rmSync(dir, { recursive: true, force: true });
   });
 });
