@@ -195,3 +195,31 @@ describe("workflow/redescribe-book.js return shape", () => {
     expect(src).not.toMatch(/return \{ bookNumber, descriptionEvents, aliasEvents \}/);
   });
 });
+
+describe("validateDescriptions / validateAliases use the registry's spine order", () => {
+  const spine: Registry = {
+    booksProcessed: [1],
+    entities: [mk({ id: "luceum", canonicalName: "Luceum", appearances: ["B1·C1·¶1", "B1·Synchronism·¶20", "B1·Synchronism-2·¶16"] })],
+    books: [{ number: 1, sections: ["C1", "Synchronism", "Synchronism-2"] }],
+  };
+  it("accepts versions in two non-standard sections when books[] says which comes first", () => {
+    const evs: DescriptionEvent[] = [
+      { id: "luceum", anchor: "B1·C1·¶1", description: "a", significance: "minor" },
+      { id: "luceum", anchor: "B1·Synchronism·¶20", description: "b", significance: "minor" },
+      { id: "luceum", anchor: "B1·Synchronism-2·¶16", description: "c", significance: "minor" },
+    ];
+    expect(validateDescriptions(spine, evs).errors).toEqual([]);
+    const aevs: AliasEvent[] = [
+      { id: "luceum", anchor: "B1·Synchronism·¶20", alias: "the Luceum" },
+      { id: "luceum", anchor: "B1·Synchronism-2·¶16", alias: "Luceum gate" },
+    ];
+    expect(validateAliases(spine, aevs).errors).toEqual([]);
+  });
+  it("still flags a genuinely reversed pair within the spine order", () => {
+    const evs: DescriptionEvent[] = [
+      { id: "luceum", anchor: "B1·Synchronism-2·¶16", description: "c", significance: "minor" },
+      { id: "luceum", anchor: "B1·Synchronism·¶20", description: "b", significance: "minor" },
+    ];
+    expect(validateDescriptions(spine, evs).errors.some((e) => /order/i.test(e))).toBe(true);
+  });
+});

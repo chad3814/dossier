@@ -1,14 +1,20 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { anchorSortKey, normalizeAnchor } from "./registry.js";
+import { anchorSortKey, buildSectionOrder, normalizeAnchor, type SectionOrder } from "./registry.js";
 import { resolveSeriesOrExit } from "./series.js";
 import type { AliasEvent, DescriptionEvent, Registry } from "./types.js";
 
-function cmp(a: string, b: string): number {
-  const ka = anchorSortKey(a);
-  const kb = anchorSortKey(b);
-  return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
+/**
+ * Anchor comparator bound to the registry's spine order, so two non-standard section labels
+ * in one book (e.g. `Synchronism`, `Synchronism-2`) compare by position, not by the label heuristic.
+ */
+function cmpWith(order: SectionOrder): (a: string, b: string) => number {
+  return (a, b) => {
+    const ka = anchorSortKey(a, order);
+    const kb = anchorSortKey(b, order);
+    return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
+  };
 }
 
 /**
@@ -26,6 +32,7 @@ export function validateDescriptions(
 ): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const cmp = cmpWith(buildSectionOrder(registry.books));
   const byId = new Map(registry.entities.map((e) => [e.id, e]));
   const grouped = new Map<string, DescriptionEvent[]>();
 
@@ -63,6 +70,7 @@ export function validateDescriptions(
 
 /** Structural checks on an alias-event log: known ids, per-entity non-decreasing anchor order. */
 export function validateAliases(registry: Registry, events: AliasEvent[]): { errors: string[]; warnings: string[] } {
+  const cmp = cmpWith(buildSectionOrder(registry.books));
   const errors: string[] = [];
   const byId = new Map(registry.entities.map((e) => [e.id, e]));
   const grouped = new Map<string, AliasEvent[]>();
