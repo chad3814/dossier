@@ -8,7 +8,7 @@ import type { SeriesProfile } from "./series.js";
 import type { BookManifest, Chunk, EntryType, Section, SpineEntry } from "./types.js";
 
 const FRONT_MATTER =
-  /cover|title\s*page|copyright|dedication|table of contents|^contents$|colophon|acknowledg|about the author|also[-_ ]?by|backmatter|ad[-_]?card|teaser|newsletter|by the same author|glossary|^map( of\b.*)?$|image description|major characters|cast of characters|dramatis personae|endpaper|signup|recommendpage|longdesc|drm[-_ ]?notice/i;
+  /cover|title\s*page|copyright|dedication|table of contents|^contents$|colophon|acknowledg|about the author|also[-_ ]?by|backmatter|ad[-_]?card|teaser|newsletter|by the same author|glossary|^map( of\b.*)?$|image description|major characters|cast of characters|dramatis personae|endpaper|signup|recommendpage|longdesc|drm[-_ ]?notice|also in series|author.?s note|from the publisher|thank you for reading|^litrpg$|^appendix\b/i;
 
 const ROMAN = /^m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$/;
 const ROMAN_VALUES: Record<string, number> = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
@@ -55,6 +55,14 @@ export function classifyEntry(
   };
   const anyTitle = (re: RegExp): boolean => titles.some((x) => re.test(x));
 
+  // Structural sections first: a title such as "Epilogue Chapter 6" is an epilogue, not chapter 6
+  // (its number would collide with the real chapter 6's anchor namespace).
+  for (const type of ["prologue", "interlude", "epilogue", "epigraph"] as const) {
+    if (anyTitle(new RegExp(`\\b${type}\\b`, "i")) || id.includes(type)) {
+      return { type, number: numIn(t) ?? numIn(id) };
+    }
+  }
+
   // Chapter from the reliable signals (title text, then idref).
   const chap = firstMatch(/chapter\s+(\d+)/) ?? id.match(/chapter[^0-9]*(\d+)/);
   if (chap) return { type: "chapter", number: Number.parseInt(chap[1] as string, 10) };
@@ -66,17 +74,17 @@ export function classifyEntry(
     if (n !== null) return { type: "chapter", number: n };
   }
 
-  for (const type of ["prologue", "interlude", "epilogue", "epigraph"] as const) {
-    if (anyTitle(new RegExp(`\\b${type}\\b`, "i")) || id.includes(type)) {
-      return { type, number: numIn(t) ?? numIn(id) };
-    }
-  }
+  // Numbered TOC labels without the word "chapter": "12. Precise Control".
+  const numbered = firstMatch(/^(\d+)\.\s+\S/);
+  if (numbered) return { type: "chapter", number: Number.parseInt(numbered[1] as string, 10) };
 
   // Part dividers: titled "Part I/One/1", or a roman-numeral prefix like "I. Havana".
   // Match the word "part" in the idref only with separators, so filename-style
   // idrefs such as "part0008" are NOT treated as Part dividers.
   if (anyTitle(/\bpart\b/i) || anyTitle(/^[ivxlcdm]+\.\s/i) || /[_-]part[_-]/.test(id)) {
-    return { type: "part", number: numIn(t) ?? numIn(id) };
+    const romanPart = firstMatch(/\bpart\s+([ivxlcdm]+)\b/);
+    const n = romanPart ? romanToInt(romanPart[1] as string) : null;
+    return { type: "part", number: n ?? numIn(t) ?? numIn(id) };
   }
 
   // Front-matter must be ruled out BEFORE the body-text fallback, since pages
@@ -160,9 +168,34 @@ export function parseTocTitles(ncxXml: string): Map<string, string> {
  * with inner markup flattened and whitespace collapsed. This index is the
  * repeatable ¶ anchor.
  */
-export function extractParagraphs(xhtml: string): string[] {
+export type ParagraphMode = "p" | "div";
+
+/**
+ * Pick the paragraph element for a whole book: `<p>` normally; leaf `<div>`s only when no
+ * document in the book has a single `<p>` (KFX-derived EPUBs). Decided per book, never per
+ * page, so a decorative div-only page in a `<p>` book stays excluded and anchors stay put.
+ */
+export function detectParagraphMode(xhtmls: Iterable<string>): ParagraphMode {
+  let sawAny = false;
+  for (const x of xhtmls) {
+    sawAny = true;
+    if (/<p[\s>]/i.test(x)) return "p";
+  }
+  return sawAny ? "div" : "p";
+}
+
+export function extractParagraphs(xhtml: string, mode: ParagraphMode = "p"): string[] {
   const root = parse(xhtml);
   const out: string[] = [];
+  if (mode === "div") {
+    // Leaf divs — no block-level children — in document order.
+    for (const div of root.querySelectorAll("div")) {
+      if (div.querySelector("div, p")) continue;
+      const text = div.textContent.replace(/\s+/g, " ").trim();
+      if (text.length > 0) out.push(text);
+    }
+    return out;
+  }
   for (const p of root.querySelectorAll("p")) {
     const text = p.textContent.replace(/\s+/g, " ").trim();
     if (text.length > 0) out.push(text);
@@ -233,6 +266,34 @@ export function scopeOptionsToBook(opts: PreprocessOptions, bookNumber: number):
     if (k !== null) sectionLabels[k] = label;
   }
   return { excludeSections, sectionLabels };
+}
+
+export type SectionPlan = ReturnType<typeof planSection>;
+
+/** The <title> element text alone (the per-file title publishers copy across split files). */
+function extractDocTitle(xhtml: string): string {
+  return parse(xhtml).querySelector("title")?.textContent.replace(/\s+/g, " ").trim() ?? "";
+}
+
+/** What buildSections knows about a spine file when deciding whether it continues a chapter. */
+export interface SectionSource {
+  tocTitle: string;
+  pageTitle: string;
+  plan: SectionPlan;
+}
+
+/**
+ * Publishers sometimes split one chapter across several files — the prose, then stat-sheet
+ * blocks — where only the first has a TOC entry and all share the chapter's <title>. A
+ * TOC-less file whose <title> and chapter number match the previous section's is a
+ * continuation of that chapter, not a new `C10-2`. Only NUMBERED sections qualify (chapter 10,
+ * "Epilogue Chapter 2"), so distinct unnumbered interludes/epilogues sharing a label never merge.
+ */
+export function isChapterContinuation(prev: SectionSource | null, cur: SectionSource): boolean {
+  if (!prev || !prev.plan.include || !cur.plan.include) return false;
+  if (cur.tocTitle !== "" || cur.pageTitle === "" || cur.pageTitle !== prev.pageTitle) return false;
+  if (prev.plan.type !== cur.plan.type) return false;
+  return cur.plan.number !== null && cur.plan.number === prev.plan.number;
 }
 
 /**
@@ -326,22 +387,33 @@ function buildSections(zip: AdmZip, seriesOpts: PreprocessOptions, bookNumber: n
 
   const uniqueLabel = makeLabelUniquer();
 
+  const docs = new Map(spine.map((entry) => [entry.href, zip.readAsText(opfDir === "." ? entry.href : posix.join(opfDir, entry.href))]));
+  const mode = detectParagraphMode(docs.values());
+
   const sections: Section[] = [];
   const seenTitles: string[] = [];
   const seenIdrefs: string[] = [];
+  let lastSource: SectionSource | null = null; // source of the most recently pushed section
   spine.forEach((entry, spineIndex) => {
-    const fullPath = opfDir === "." ? entry.href : posix.join(opfDir, entry.href);
-    const xhtml = zip.readAsText(fullPath);
-    const paragraphs = extractParagraphs(xhtml);
+    const xhtml = docs.get(entry.href) as string;
+    const paragraphs = extractParagraphs(xhtml, mode);
     const bodyStart = paragraphs.slice(0, 2).join(" ").slice(0, 80);
     const tocTitle = tocTitleFor(entry.href);
-    const classifierTitles = tocTitle ? [tocTitle] : extractClassifierTitles(xhtml);
+    // The TOC label alone classifies a page when it exists (authoritative); the page's own
+    // <title>/h1/h2 components are consulted only for TOC-less files.
+    const components = tocTitle ? [tocTitle] : extractClassifierTitles(xhtml);
     const title = tocTitle || extractTitle(xhtml);
     seenTitles.push(title);
     seenIdrefs.push(entry.idref);
-    const plan = planSection(entry, spineIndex, title, classifierTitles, bodyStart, opts);
+    const plan = planSection(entry, spineIndex, title, components, bodyStart, opts);
     if (!plan.include) return;
     if (paragraphs.length === 0) return;
+    const source: SectionSource = { tocTitle, pageTitle: extractDocTitle(xhtml), plan };
+    const last = sections[sections.length - 1];
+    if (last && isChapterContinuation(lastSource, source)) {
+      last.paragraphs.push(...paragraphs);
+      return;
+    }
     sections.push({
       type: plan.type,
       label: uniqueLabel(plan.base),
@@ -350,6 +422,7 @@ function buildSections(zip: AdmZip, seriesOpts: PreprocessOptions, bookNumber: n
       href: entry.href,
       paragraphs,
     });
+    lastSource = source;
   });
   return { sections, warnings: unmatchedPreprocessEntries(opts, { titles: seenTitles, idrefs: seenIdrefs }) };
 }

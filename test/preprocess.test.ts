@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   baseLabel,
+  detectParagraphMode,
+  isChapterContinuation,
   classifyEntry,
   extractParagraphs,
   isInsideDir,
@@ -310,5 +312,90 @@ describe("classifyEntry with separate title components (no TOC entry)", () => {
   it("does not let an anchored term match across a component boundary", () => {
     // A story section whose heading merely contains 'map' must not become front matter.
     expect(classifyEntry("x", ["The Will of the Many", "The Mapmaker"], "Prose.").type).toBe("other");
+  });
+});
+
+describe("classifyEntry: LitRPG-style EPUB conventions (He Who Fights with Monsters)", () => {
+  it("lets a structural word win over a chapter number in the same title", () => {
+    expect(classifyEntry("id692", ["Epilogue Chapter 6", "KIND OF HIS THING"], "").type).toBe("epilogue");
+    expect(classifyEntry("id1", ["Prologue Chapter 1"], "").type).toBe("prologue");
+    expect(classifyEntry("id2", ["Interlude Chapter 3"], "").type).toBe("interlude");
+    // a plain chapter is still a chapter
+    expect(classifyEntry("id131", ["Chapter 1: Strange Business", "Strange Business"], "")).toEqual({ type: "chapter", number: 1 });
+    expect(classifyEntry("id191", ["Chapter 0: Don’t Tell Humphrey", "DON’T TELL HUMPHREY"], "")).toEqual({ type: "chapter", number: 0 });
+  });
+
+  it("classifies publisher and community pages and appendices as front matter", () => {
+    for (const title of ["ALSO IN SERIES", "Author’s Note", "Author's Note", "FROM THE PUBLISHER", "Thank you for reading He Who Fights With Monsters, book six.", "LitRPG", "APPENDIX III", "Appendix IV"]) {
+      expect(classifyEntry("x", title, "").type, title).toBe("front");
+    }
+  });
+});
+
+describe("extractParagraphs: div-based EPUBs (no <p> elements)", () => {
+  const divDoc = `<html><body>
+      <div class="wrap"><div class="num">1</div><div class="title">Climbing Mountains</div></div>
+      <div class="para"><span class="dc"><span>J</span></span>ason Asano walked through the halls.</div>
+      <div class="para">The cloud palace was far from just white cloud-stuff.</div>
+      <div class="img"><img src="x.jpg"/></div>
+    </body></html>`;
+  it("in 'div' mode reads leaf <div>s with text, in document order", () => {
+    expect(extractParagraphs(divDoc, "div")).toEqual([
+      "1",
+      "Climbing Mountains",
+      "Jason Asano walked through the halls.",
+      "The cloud palace was far from just white cloud-stuff.",
+    ]);
+  });
+  it("in the default 'p' mode a div-only page yields nothing (so decorative pages stay excluded)", () => {
+    expect(extractParagraphs(divDoc)).toEqual([]);
+    expect(extractParagraphs(`<html><body><div>wrapper</div><p>A.</p><p>B.</p></body></html>`)).toEqual(["A.", "B."]);
+  });
+});
+
+describe("detectParagraphMode", () => {
+  it("chooses 'div' only when no document in the book has a <p>", () => {
+    expect(detectParagraphMode(["<body><div>a</div></body>", "<body><div>b</div></body>"])).toBe("div");
+    expect(detectParagraphMode(["<body><div>a</div></body>", "<body><p>b</p></body>"])).toBe("p");
+    expect(detectParagraphMode([])).toBe("p");
+  });
+});
+
+describe("classifyEntry: numbered TOC labels", () => {
+  it("treats 'N. Title' as chapter N", () => {
+    expect(classifyEntry("part0005", ["1. Climbing Mountains"], "")).toEqual({ type: "chapter", number: 1 });
+    expect(classifyEntry("part0040", ["36. Instinctively Protected", "INSTINCTIVELY PROTECTED"], "")).toEqual({ type: "chapter", number: 36 });
+  });
+  it("keeps roman-numeral prefixes as part dividers", () => {
+    expect(classifyEntry("part0009.xhtml", "I. The Ceasefire", "").type).toBe("part");
+  });
+  it("numbers a part divider from a Roman numeral in its title before falling back to idref digits", () => {
+    expect(classifyEntry("part0007", ["Part I", "PART I"], "")).toEqual({ type: "part", number: 1 });
+    expect(classifyEntry("part0040", ["Part II"], "")).toEqual({ type: "part", number: 2 });
+    expect(classifyEntry("x_part-003-xhtml", "", "")).toEqual({ type: "part", number: 3 });
+  });
+});
+
+describe("isChapterContinuation (stat-sheet files split off a chapter)", () => {
+  const body = { tocTitle: "", pageTitle: "Chapter 10: A Leather Coat", plan: { include: true as const, type: "chapter" as const, number: 10, base: "C10" } };
+  it("merges a TOC-less file with the same <title> and the same chapter number into the previous section", () => {
+    const sheet = { tocTitle: "", pageTitle: "Chapter 10: A Leather Coat", plan: { include: true as const, type: "chapter" as const, number: 10, base: "C10" } };
+    expect(isChapterContinuation(body, sheet)).toBe(true);
+  });
+  it("does not merge when the file has its own TOC entry, a different <title>, a different number, or is not a numbered chapter", () => {
+    expect(isChapterContinuation(body, { ...body, tocTitle: "11. Next" })).toBe(false);
+    expect(isChapterContinuation(body, { ...body, pageTitle: "Chapter 11: Next" })).toBe(false);
+    expect(isChapterContinuation(body, { ...body, plan: { include: true, type: "chapter", number: 11, base: "C11" } })).toBe(false);
+    const inter = { tocTitle: "", pageTitle: "Book", plan: { include: true as const, type: "interlude" as const, number: null, base: "Interlude" } };
+    expect(isChapterContinuation(inter, inter)).toBe(false);
+    // a NUMBERED epilogue ("Epilogue Chapter 2") split across files does merge
+    const epi = { tocTitle: "", pageTitle: "Epilogue Chapter 2", plan: { include: true as const, type: "epilogue" as const, number: 2, base: "Epilogue" } };
+    expect(isChapterContinuation({ ...epi, tocTitle: "Epilogue Chapter 2" }, epi)).toBe(true);
+    expect(isChapterContinuation(null, sheetLike())).toBe(false);
+    function sheetLike() { return body; }
+  });
+  it("requires a non-empty <title> to compare", () => {
+    const a = { ...body, pageTitle: "" };
+    expect(isChapterContinuation(a, a)).toBe(false);
   });
 });
