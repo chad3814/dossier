@@ -190,3 +190,14 @@ describe("validateProfile aliasPolicy", () => {
     expect(() => validateProfile({ ...profile, aliasPolicy: "strict" }, "demo")).toThrow(/aliasPolicy/);
   });
 });
+
+describe("extraction.agentType / extraction.model (optional agent settings)", () => {
+  it("are optional strings carried into promptMeta; wrong types are rejected", () => {
+    const p = validateProfile({ ...profile, extraction: { ...profile.extraction, agentType: "Explore", model: "fable" } }, "demo");
+    expect(p.extraction.agentType).toBe("Explore");
+    expect(p.extraction.model).toBe("fable");
+    expect(promptMeta(p, "extraction")).toMatchObject({ agentType: "Explore", model: "fable" });
+    expect(promptMeta(validateProfile(profile, "demo"), "extraction").agentType).toBeUndefined();
+    expect(() => validateProfile({ ...profile, extraction: { ...profile.extraction, model: 5 } }, "demo")).toThrow(/extraction/);
+  });
+});

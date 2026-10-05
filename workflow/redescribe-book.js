@@ -17,7 +17,12 @@ const seriesId = '';
 const seriesTitle = '';
 const seriesAuthor = '';
 const seriesNotes = [];  // series-specific prompt rules from <series>/series.json
+const agentType = null;  // e.g. 'Explore' (skips CLAUDE.md injection)
+const agentModel = null; // e.g. 'fable'; null inherits the session model
 // ===================================================
+
+// Per-agent options from the series profile (omitted keys fall back to harness defaults).
+const agentOpts = { ...(agentType ? { agentType } : {}), ...(agentModel ? { model: agentModel } : {}) };
 
 // Retry wrapper: agent() returns null on terminal API errors (e.g. Overloaded).
 const agentRetry = async (prompt, opts, tries = 4) => {
@@ -106,6 +111,7 @@ for (let i = 0; i < chapters.length; i++) {
     candidateAliases: (aliasesById[e.id] || []).filter((a) => !(emitted.get(e.id) && emitted.get(e.id).has(a))),
   }));
   const res = await agentRetry(prompt(`${sectionDir}/${ch.file}`, withCurrent), {
+    ...agentOpts,
     schema,
     phase: 'Redescribe',
     label: `${seriesId}:redescribe:B${bookNumber}·${ch.label}`,

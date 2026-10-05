@@ -17,7 +17,12 @@ const seriesId = '';
 const seriesTitle = '';
 const seriesAuthor = '';
 const seriesNotes = [];          // series-specific prompt rules from <series>/series.json
+const agentType = null;          // e.g. 'Explore' (skips CLAUDE.md injection; ~half the per-agent cache write)
+const agentModel = null;         // e.g. 'fable'; null inherits the session model
 // ===================================================
+
+// Per-agent options from the series profile (omitted keys fall back to harness defaults).
+const agentOpts = { ...(agentType ? { agentType } : {}), ...(agentModel ? { model: agentModel } : {}) };
 
 // deterministic helpers mirroring src/registry.ts (the sandbox can't import project files)
 function normalizeName(name) {
@@ -148,7 +153,7 @@ const seriesRules = seriesNotes.length
 const extractPrompt = (path) =>
   `You are extracting named entities from ONE chapter of "${seriesTitle}" by ${seriesAuthor} (Book ${bookNumber}), processed in reading order.
 
-Each line of the chapter file is annotated like [B${bookNumber}·C3·¶5]; the token inside the brackets is the EXACT citation for that paragraph.
+Each line of the chapter file is annotated like [B${bookNumber}·C3·¶5]; the token inside the brackets is the EXACT citation for that paragraph. Return anchors WITHOUT the square brackets (e.g. B${bookNumber}·C3·¶5).
 
 For EVERY paragraph in which a qualifying entity appears:
 - If it refers to an already-known entity above — by name, alias, title, epithet, or context (an epithet, role, or description the text clearly ties to a known entity) — add an entry to "matched" with that entity's exact id, the exact anchor, and an "aliases" array of any NEW name-forms for it that appear here (otherwise []).
@@ -206,6 +211,7 @@ for (let i = 0; i < sectionFiles.length; i++) {
   const path = `${sectionDir}/${sectionFiles[i]}`;
   const label = sectionFiles[i].replace(/\.txt$/, '');
   const res = await agentRetry(extractPrompt(path), {
+    ...agentOpts,
     schema: extractSchema,
     phase: 'Extract',
     label: `${seriesId}:extract:${label}`,
@@ -268,7 +274,7 @@ for (let i = 0; i < toDescribe.length; i += BATCH) {
   })));
 }
 const describeResults = await parallel(batches.map((batch, bi) => () =>
-  agentRetry(describePrompt(batch), { schema: describeSchema, phase: 'Describe', label: `${seriesId}:describe:batch-${bi + 1}` }),
+  agentRetry(describePrompt(batch), { ...agentOpts, schema: describeSchema, phase: 'Describe', label: `${seriesId}:describe:batch-${bi + 1}` }),
 ));
 const descById = new Map();
 for (const r of describeResults) {

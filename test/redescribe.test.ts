@@ -258,3 +258,15 @@ describe("spine order in reconcileAliases and buildRedescribeConstants", () => {
     expect(c.seed["luceum"]!.description).toBe("later");
   });
 });
+
+describe("agent settings flow into the re-describe constants and template", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(join(here, "..", "workflow", "redescribe-book.js"), "utf8");
+  it("renderRedescribeBlock emits agentType/agentModel and the template spreads them", () => {
+    const block = renderRedescribeBlock({ bookNumber: 1, chapters: [], entityMeta: {}, seed: {}, aliasesById: {} }, "/d", { id: "demo", title: "D", author: "A", notes: [], agentType: "Explore", model: "fable" });
+    expect(block).toContain('const agentType = "Explore";');
+    expect(block).toContain('const agentModel = "fable";');
+    expect(src).toMatch(/const agentOpts = \{/);
+    expect(src).toContain("...agentOpts");
+  });
+});

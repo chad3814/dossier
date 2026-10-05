@@ -132,3 +132,23 @@ describe("workflow/book-extract.js feeds learned aliases back and forbids descri
     expect(src).toMatch(/kinship/i);
   });
 });
+
+describe("agent settings flow into the extraction constants and template", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(join(here, "..", "workflow", "book-extract.js"), "utf8");
+  it("buildConstants emits agentType/agentModel (null when unset)", () => {
+    const withSettings = buildConstants(1, "/d", [], [], [], { ...series, agentType: "Explore", model: "fable" });
+    expect(withSettings).toContain('const agentType = "Explore";');
+    expect(withSettings).toContain('const agentModel = "fable";');
+    const without = buildConstants(1, "/d", [], [], [], series);
+    expect(without).toContain("const agentType = null;");
+    expect(without).toContain("const agentModel = null;");
+  });
+  it("the template spreads the settings into every agent call and asks for bracket-free anchors", () => {
+    expect(src).toMatch(/const agentType = null;/);
+    expect(src).toMatch(/const agentModel = null;/);
+    expect(src).toMatch(/const agentOpts = \{/);
+    expect((src.match(/\.\.\.agentOpts/g) || []).length).toBeGreaterThanOrEqual(2);
+    expect(src).toMatch(/WITHOUT the square brackets/);
+  });
+});

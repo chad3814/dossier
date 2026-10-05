@@ -14,6 +14,10 @@ export interface SeriesProfile {
     notes: string[];
     /** Series-specific prose rules spliced into the re-describe prompt. */
     redescribeNotes: string[];
+    /** Workflow agent type for extraction/re-describe agents (e.g. "Explore" skips CLAUDE.md injection); harness default when omitted. */
+    agentType?: string;
+    /** Model override for those agents (e.g. "fable"); the session model when omitted. */
+    model?: string;
   };
   preprocess: {
     /** Spine entries to drop: exact, case-insensitive match on TOC title or spine idref. */
@@ -60,6 +64,8 @@ export interface SeriesPromptMeta {
   title: string;
   author: string;
   notes: string[];
+  agentType?: string;
+  model?: string;
 }
 
 export const SERIES_ENV = "DOSSIER_SERIES";
@@ -156,6 +162,12 @@ export function validateProfile(raw: unknown, expectedId: string): SeriesProfile
   if (!isRecord(extraction) || !isStringArray(extraction.notes) || !isStringArray(extraction.redescribeNotes)) {
     throw bad("extraction", "{ notes: string[], redescribeNotes: string[] }");
   }
+  for (const k of ["agentType", "model"] as const) {
+    if (extraction[k] !== undefined && typeof extraction[k] !== "string") throw bad("extraction", `{ ${k}?: string }`);
+  }
+  const agentSettings: { agentType?: string; model?: string } = {};
+  if (typeof extraction.agentType === "string") agentSettings.agentType = extraction.agentType;
+  if (typeof extraction.model === "string") agentSettings.model = extraction.model;
 
   if (!isRecord(preprocess) || !isStringArray(preprocess.excludeSections) || !isRecord(preprocess.sectionLabels)) {
     throw bad("preprocess", "{ excludeSections: string[], sectionLabels: Record<string, string> }");
@@ -181,7 +193,7 @@ export function validateProfile(raw: unknown, expectedId: string): SeriesProfile
     title,
     author,
     books: typedBooks,
-    extraction: { notes: extraction.notes, redescribeNotes: extraction.redescribeNotes },
+    extraction: { notes: extraction.notes, redescribeNotes: extraction.redescribeNotes, ...agentSettings },
     preprocess: { excludeSections: preprocess.excludeSections, sectionLabels },
     steps: { crawlerNumbers: steps.crawlerNumbers },
   };
@@ -241,12 +253,15 @@ export function resolveOutPath(paths: SeriesPaths, out: string): string {
 }
 
 export function promptMeta(profile: SeriesProfile, kind: "extraction" | "redescribe"): SeriesPromptMeta {
-  return {
+  const meta: SeriesPromptMeta = {
     id: profile.id,
     title: profile.title,
     author: profile.author,
     notes: kind === "extraction" ? profile.extraction.notes : profile.extraction.redescribeNotes,
   };
+  if (profile.extraction.agentType !== undefined) meta.agentType = profile.extraction.agentType;
+  if (profile.extraction.model !== undefined) meta.model = profile.extraction.model;
+  return meta;
 }
 
 /** Throw unless the profile opts into an optional pipeline step. */

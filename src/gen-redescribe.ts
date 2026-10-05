@@ -111,6 +111,8 @@ export function renderRedescribeBlock(c: RedescribeConstants, sectionDir: string
     `const seriesTitle = ${JSON.stringify(series.title)};`,
     `const seriesAuthor = ${JSON.stringify(series.author)};`,
     `const seriesNotes = ${JSON.stringify(series.notes)};`,
+    `const agentType = ${JSON.stringify(series.agentType ?? null)};`,
+    `const agentModel = ${JSON.stringify(series.model ?? null)};`,
     END,
   ].join("\n");
 }
