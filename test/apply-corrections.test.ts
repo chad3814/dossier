@@ -232,3 +232,76 @@ describe("readJsonArrayIfExists", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("aliasPolicy and setCanonical", () => {
+  const mkE = (id: string, canonicalName: string, aliases: string[], appearances: string[] = ["B1·C1·¶1"]) => ({
+    id, canonicalName, aliases, type: "person" as const, tags: ["in_world" as const], significance: "minor" as const,
+    description: "", firstAppearance: { anchor: appearances[0]!, snippet: "" }, appearances,
+  });
+
+  it("names-only policy scrubs descriptive aliases during blob-clean; default policy leaves them", () => {
+    const registry: Registry = { booksProcessed: [1], entities: [mkE("elspeth", "Elspeth Arella", ["the director", "Madam Director", "the woman", "Arella"])] };
+    const scrubbed = applyCorrections({ registry, aliases: [], descriptions: [], corrections: {}, aliasPolicy: "names-only" });
+    expect(scrubbed.registry.entities[0]!.aliases).toEqual(["Madam Director", "Arella"]);
+    const kept = applyCorrections({ registry, aliases: [], descriptions: [], corrections: {} });
+    expect(kept.registry.entities[0]!.aliases).toEqual(["the director", "Madam Director", "the woman", "Arella"]);
+  });
+
+  it("setCanonical renames the display name after merges and keeps the old name as an alias", () => {
+    const registry: Registry = {
+      booksProcessed: [1],
+      entities: [
+        mkE("lady-vane", "Lady Vane", ["milady"], ["B1·C9·¶26"]),
+        mkE("cressida", "Cressida", ["Cressida Vane"], ["B1·C12·¶35"]),
+      ],
+    };
+    const out = applyCorrections({
+      registry, aliases: [], descriptions: [],
+      corrections: { merges: [{ from: "lady-vane", into: "cressida" }], setCanonical: [{ id: "cressida", canonicalName: "Cressida Vane" }] },
+    });
+    const c = out.registry.entities.find((e) => e.id === "cressida")!;
+    expect(out.registry.entities.map((e) => e.id)).toEqual(["cressida"]);
+    expect(c.canonicalName).toBe("Cressida Vane");
+    expect(c.aliases).toEqual(expect.arrayContaining(["Cressida", "Lady Vane", "milady"]));
+    expect(c.aliases).not.toContain("Cressida Vane"); // canonical is not also an alias
+  });
+
+  it("setCanonical on a missing id is a no-op (idempotent-on-missing like every other op)", () => {
+    const registry: Registry = { booksProcessed: [1], entities: [mkE("a", "A", [])] };
+    expect(() => applyCorrections({ registry, aliases: [], descriptions: [], corrections: { setCanonical: [{ id: "ghost", canonicalName: "G" }] } })).not.toThrow();
+  });
+});
+
+describe("merge never adds an alias equal to the surviving entity's canonical name", () => {
+  it("skips from-aliases (and from's canonical) that normalize to into.canonicalName, so materialize round-trips", () => {
+    const mkE = (id: string, canonicalName: string, aliases: string[], appearances: string[]) => ({
+      id, canonicalName, aliases, type: "person" as const, tags: ["in_world" as const], significance: "minor" as const,
+      description: "", firstAppearance: { anchor: appearances[0]!, snippet: "" }, appearances,
+    });
+    const registry: Registry = {
+      booksProcessed: [1],
+      entities: [
+        mkE("humphrey", "Humphrey", ["Humphrey Geller"], ["B1·C45·¶61"]),
+        mkE("danielle-gellers-son", "Danielle Geller's son", ["Humphrey", "humphrey", "Young Master Geller"], ["B1·C37·¶26"]),
+      ],
+    };
+    const out = applyCorrections({ registry, aliases: [], descriptions: [], corrections: { merges: [{ from: "danielle-gellers-son", into: "humphrey" }] } });
+    const h = out.registry.entities.find((e) => e.id === "humphrey")!;
+    expect(h.aliases).toEqual(["Humphrey Geller", "Young Master Geller", "Danielle Geller's son"]);
+  });
+});
+
+describe("applyCorrections keeps entities sorted by canonical name", () => {
+  it("re-sorts after setCanonical so materialize(synthesizeLog(registry)) reproduces entity order", () => {
+    const mkE = (id: string, canonicalName: string) => ({
+      id, canonicalName, aliases: [], type: "person" as const, tags: ["in_world" as const], significance: "minor" as const,
+      description: "", firstAppearance: { anchor: "B1·C1·¶1", snippet: "" }, appearances: ["B1·C1·¶1"],
+    });
+    const registry: Registry = { booksProcessed: [1], entities: [mkE("alpha", "Alpha"), mkE("jasons-familiar", "Jason's familiar"), mkE("zed", "Zed")] };
+    const out = applyCorrections({ registry, aliases: [], descriptions: [], corrections: { setCanonical: [{ id: "jasons-familiar", canonicalName: "Colin" }] } });
+    expect(out.registry.entities.map((e) => e.canonicalName)).toEqual(["Alpha", "Colin", "Zed"]);
+    // and a rename that should move it to the end
+    const out2 = applyCorrections({ registry, aliases: [], descriptions: [], corrections: { setCanonical: [{ id: "jasons-familiar", canonicalName: "Zorro" }] } });
+    expect(out2.registry.entities.map((e) => e.canonicalName)).toEqual(["Alpha", "Zed", "Zorro"]);
+  });
+});

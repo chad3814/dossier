@@ -115,3 +115,20 @@ describe("workflow/book-extract.js prompt layout is prompt-cache friendly", () =
     expect(at("${seriesRules}")).toBeLessThan(frozen);
   });
 });
+
+describe("workflow/book-extract.js feeds learned aliases back and forbids descriptive aliases", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(join(here, "..", "workflow", "book-extract.js"), "utf8");
+  it("tracks aliases learned via matched entries and includes them in the volatile prompt tail", () => {
+    expect(src).toMatch(/const learnedAliases = new Map\(\);/);
+    expect(src).toContain("ALIASES LEARNED THIS BOOK");
+    const start = src.indexOf("const extractPrompt = ");
+    const body = src.slice(start, src.indexOf("`;", start) + 2);
+    expect(body.indexOf("${frozenIndexJson}")).toBeLessThan(body.indexOf("ALIASES LEARNED THIS BOOK"));
+    expect(body.indexOf("ALIASES LEARNED THIS BOOK")).toBeLessThan(body.indexOf("${path}"));
+  });
+  it("tells agents that aliases are names, never descriptive phrases or kinship terms", () => {
+    expect(src).toMatch(/NEVER record descriptive phrases/i);
+    expect(src).toMatch(/kinship/i);
+  });
+});

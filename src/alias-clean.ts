@@ -44,7 +44,29 @@ export function isPossessiveOfName(alias: string, nameForms: string[]): boolean 
   });
 }
 
-/** A dropped-by-cleaning alias: bare noise OR a possessive of the entity's own name. */
-export function isDroppableAlias(alias: string, entity: RegistryEntity): boolean {
-  return isNoiseAlias(alias) || isPossessiveOfName(alias, nameFormsOf(entity));
+/**
+ * How aggressively aliases are cleaned for a series (series.json `aliasPolicy`):
+ * - "default": bare noise + possessives of the entity's own name (DCC/Hierarchy behaviour).
+ * - "names-only": additionally drop descriptive phrases and kinship references.
+ */
+export type AliasPolicy = "default" | "names-only";
+
+const DETERMINERS = new Set(["the", "a", "an", "my", "your", "his", "her", "its", "their", "our", "this", "that", "these", "those"]);
+
+/**
+ * A determiner-led phrase that is a description, not a name: "the man behind the desk",
+ * "my son", "that woman", "the quest". A determiner followed by a proper noun is still a
+ * name-form ("the Adventure Society", "the Queen", "The Sanguine Horror") and is kept.
+ */
+export function isDescriptiveAlias(alias: string): boolean {
+  const tokens = alias.trim().split(/\s+/);
+  if (tokens.length < 2) return false;
+  if (!DETERMINERS.has((tokens[0] as string).toLowerCase())) return false;
+  return !tokens.slice(1).some((t) => /^[\p{Lu}#\d[]/u.test(t));
+}
+
+/** A dropped-by-cleaning alias: bare noise, a possessive of the entity's own name, or (names-only) a description. */
+export function isDroppableAlias(alias: string, entity: RegistryEntity, policy: AliasPolicy = "default"): boolean {
+  if (isNoiseAlias(alias) || isPossessiveOfName(alias, nameFormsOf(entity))) return true;
+  return policy === "names-only" && isDescriptiveAlias(alias);
 }

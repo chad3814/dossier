@@ -49,6 +49,8 @@ const agentRetry = async (prompt, opts, tries = 4) => {
 // to the handful of new entities, not to the whole index (see dcc/output/token-usage.md).
 const frozenIndexJson = JSON.stringify(startIndex);
 const addedThisBook = [];
+const addedById = new Map();     // id -> entry in addedThisBook (so learned aliases can be attached)
+const learnedAliases = new Map(); // id -> Set of name-forms learned via `matched` for FROZEN (prior-book) entities
 const ids = new Set(startIndex.map((e) => e.id));
 const newById = new Map();   // entities introduced this book (full objects)
 const matched = [];          // { id, anchor, aliases } for already-known entities
@@ -153,7 +155,8 @@ For EVERY paragraph in which a qualifying entity appears:
 - Otherwise add it to "new": name (clearest form), aliases used here, type (person|creature|faction|ai_system|place|other), tag, a short factual roleHint, and mentions [{anchor, snippet}].
 
 ALIASES:
-- Capture every distinct name-form as an alias: full names, titles, epithets, nicknames, and in-world identifiers. Put them in the "aliases" of a matched entry if the entity is known, or of a new entry if first seen.
+- Capture every distinct NAME-FORM as an alias: full names, name+title ("Lady Vane", "Mr Asano"), nicknames ("Hump"), epithets used as a name, and in-world identifiers. Put them in the "aliases" of a matched entry if the entity is known, or of a new entry if first seen.
+- Aliases are NAMES. NEVER record descriptive phrases ("the man behind the desk", "the winded woman", "the big one"), kinship or relationship references ("my son", "her daughter", "his familiar", "your friend"), or generic role nouns ("the mayor", "the landlady", "the director") as aliases. Such phrases are how you RECOGNISE a mention — they are not name-forms to store.
 
 EXHAUSTIVE APPEARANCE LOGGING:
 - Log EVERY paragraph (¶) where an entity appears — one matched entry per (entity, paragraph). If an entity appears in 14 paragraphs, emit 14 matched entries. Same for new entities: list every paragraph mention.
@@ -183,6 +186,9 @@ ${frozenIndexJson}
 ALSO ALREADY-KNOWN — discovered earlier in THIS book (match against these too; never re-create them):
 ${JSON.stringify(addedThisBook)}
 
+ALIASES LEARNED THIS BOOK for the already-known entities above (id → additional name-forms; match these too):
+${JSON.stringify(Object.fromEntries([...learnedAliases].map(([id, set]) => [id, [...set]])))}
+
 Use the Read tool to read this chapter file: ${path}`;
 
 const describePrompt = (batch) =>
@@ -209,6 +215,13 @@ for (let i = 0; i < sectionFiles.length; i++) {
   for (const m of (res.matched || [])) {
     if (!ids.has(m.id)) { dropped++; continue; }
     matched.push({ id: m.id, anchor: m.anchor, aliases: m.aliases || [] });
+    // Feed newly learned name-forms back into what later chapters see, so a character first
+    // known as "the branch director" is recognised by name once the text supplies it.
+    for (const alias of (m.aliases || [])) {
+      const added = addedById.get(m.id);
+      if (added) { if (!added.aliases.includes(alias)) added.aliases.push(alias); }
+      else { let set = learnedAliases.get(m.id); if (!set) { set = new Set(); learnedAliases.set(m.id, set); } set.add(alias); }
+    }
   }
   for (const f of (res.new || [])) {
     const id = makeId(f.name, ids);
@@ -227,7 +240,9 @@ for (let i = 0; i < sectionFiles.length; i++) {
       appearances: anchors,
     };
     newById.set(id, ent);
-    addedThisBook.push({ id, canonicalName: ent.canonicalName, aliases: ent.aliases, type: ent.type });
+    const entry = { id, canonicalName: ent.canonicalName, aliases: [...ent.aliases], type: ent.type };
+    addedThisBook.push(entry);
+    addedById.set(id, entry);
     for (const mn of (f.mentions || [])) addSnippet(id, mn.snippet);
     addHint(id, f.roleHint);
   }

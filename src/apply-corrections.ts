@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isDroppableAlias } from "./alias-clean.js";
+import { isDroppableAlias, type AliasPolicy } from "./alias-clean.js";
 import { correctionIdMap, resolveHistoricalId } from "./id-history.js";
 import { buildSectionOrder, cleanAnchors, normalizeName } from "./registry.js";
 import { resolveSeriesOrExit } from "./series.js";
@@ -12,6 +12,8 @@ export interface Corrections {
   dropAliases?: Array<{ id: string; alias: string }>;
   reassignAliases?: Array<{ from: string; to: string; alias: string }>;
   merges?: Array<{ from: string; into: string }>;
+  /** Change an entity's display name (applied last, so a merged entity can be named); the old name becomes an alias. */
+  setCanonical?: Array<{ id: string; canonicalName: string }>;
 }
 
 export interface ApplyInput {
@@ -19,6 +21,8 @@ export interface ApplyInput {
   aliases: AliasEvent[];
   descriptions: DescriptionEvent[];
   corrections: Corrections;
+  /** Series alias-cleaning policy (series.json `aliasPolicy`); "default" when omitted. */
+  aliasPolicy?: AliasPolicy;
 }
 
 export interface ApplyOutput {
@@ -49,6 +53,9 @@ function aliasMatches(candidate: string, target: string): boolean {
  */
 function addAliasIfAbsent(entity: RegistryEntity, alias: string): void {
   const norm = normalizeName(alias);
+  // An alias that normalizes to the entity's own canonical name is not an alias — and
+  // `cleanAliases` (used by materialize) would strip it, breaking log reproduction.
+  if (!norm || norm === normalizeName(entity.canonicalName)) return;
   const already = entity.aliases.some((a) => normalizeName(a) === norm);
   if (!already) {
     entity.aliases.push(alias);
@@ -72,6 +79,7 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
   const aliases: AliasEvent[] = clone(input.aliases);
   const descriptions: DescriptionEvent[] = clone(input.descriptions);
   const { corrections } = input;
+  const policy: AliasPolicy = input.aliasPolicy ?? "default";
   const order = buildSectionOrder(registry.books);
 
   const byId = new Map<string, RegistryEntity>(
@@ -107,7 +115,7 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
 
   // Step 1: blob-clean every entity
   for (const entity of registry.entities) {
-    entity.aliases = entity.aliases.filter((a) => !isDroppableAlias(a, entity));
+    entity.aliases = entity.aliases.filter((a) => !isDroppableAlias(a, entity, policy));
   }
 
   // This file is replayed against data an earlier pass may already have reshaped, so an op's
@@ -169,14 +177,14 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
     // Skip any alias that would be droppable with respect to `into`, so the
     // merged result is consistent with Step-1 blob-clean and therefore idempotent.
     for (const a of fromEntity.aliases) {
-      if (!isDroppableAlias(a, intoEntity)) {
+      if (!isDroppableAlias(a, intoEntity, policy)) {
         addAliasIfAbsent(intoEntity, a);
       }
     }
 
     // Add `from`'s canonicalName as an alias on `into` (deduped), unless it is
     // itself droppable with respect to `into` (same idempotency guard).
-    if (!isDroppableAlias(fromEntity.canonicalName, intoEntity)) {
+    if (!isDroppableAlias(fromEntity.canonicalName, intoEntity, policy)) {
       addAliasIfAbsent(intoEntity, fromEntity.canonicalName);
     }
 
@@ -199,11 +207,26 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
     registry.entities = registry.entities.filter((e) => e.id !== from);
   }
 
+  // Step 5: setCanonical — display-name changes, after merges so a merged entity can be named.
+  // The previous name is kept as an alias; an alias equal to the new name is removed.
+  for (const { id, canonicalName } of corrections.setCanonical ?? []) {
+    const entity = byId.get(id);
+    if (!entity || entity.canonicalName === canonicalName) continue;
+    const previous = entity.canonicalName;
+    entity.canonicalName = canonicalName;
+    entity.aliases = entity.aliases.filter((a) => normalizeName(a) !== normalizeName(canonicalName));
+    addAliasIfAbsent(entity, previous);
+  }
+
+  // Registries are kept in canonical-name order (dedupe and materialize both produce it);
+  // setCanonical and merges may have moved entries, so restore the order before returning.
+  registry.entities.sort((a, b) => a.canonicalName.localeCompare(b.canonicalName));
+
   return { registry, aliases, descriptions };
 }
 
 function main(): void {
-  const { paths } = resolveSeriesOrExit(process.argv.slice(2), "npm run apply-corrections -- --series <id>");
+  const { paths, profile } = resolveSeriesOrExit(process.argv.slice(2), "npm run apply-corrections -- --series <id>");
   const registryPath = paths.registry;
   const aliasesPath = join(paths.logDir, "aliases.json");
   const descriptionsPath = join(paths.logDir, "descriptions.json");
@@ -216,7 +239,7 @@ function main(): void {
   const descriptions = readJsonArrayIfExists<DescriptionEvent>(descriptionsPath);
   const corrections = JSON.parse(readFileSync(correctionsPath, "utf8")) as Corrections;
 
-  const out = applyCorrections({ registry, aliases: aliases ?? [], descriptions: descriptions ?? [], corrections });
+  const out = applyCorrections({ registry, aliases: aliases ?? [], descriptions: descriptions ?? [], corrections, aliasPolicy: profile.aliasPolicy });
 
   writeFileSync(registryPath, JSON.stringify(out.registry, null, 2) + "\n", "utf8");
   if (aliases) writeFileSync(aliasesPath, JSON.stringify(out.aliases, null, 2) + "\n", "utf8");

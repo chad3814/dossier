@@ -25,6 +25,8 @@ export interface SeriesProfile {
     /** Enable the deterministic crawler-number pass (DCC only). */
     crawlerNumbers: boolean;
   };
+  /** Alias-cleaning policy for apply-corrections; "default" when omitted (see alias-clean.ts). */
+  aliasPolicy?: "default" | "names-only";
 }
 
 /** Every location a pipeline step may read or write for one series. */
@@ -169,7 +171,12 @@ export function validateProfile(raw: unknown, expectedId: string): SeriesProfile
 
   if (!isRecord(steps) || typeof steps.crawlerNumbers !== "boolean") throw bad("steps", "{ crawlerNumbers: boolean }");
 
-  return {
+  const { aliasPolicy } = raw;
+  if (aliasPolicy !== undefined && aliasPolicy !== "default" && aliasPolicy !== "names-only") {
+    throw bad("aliasPolicy", '"default" or "names-only" (or omitted)');
+  }
+
+  const out: SeriesProfile = {
     id,
     title,
     author,
@@ -178,6 +185,8 @@ export function validateProfile(raw: unknown, expectedId: string): SeriesProfile
     preprocess: { excludeSections: preprocess.excludeSections, sectionLabels },
     steps: { crawlerNumbers: steps.crawlerNumbers },
   };
+  if (aliasPolicy !== undefined) out.aliasPolicy = aliasPolicy;
+  return out;
 }
 
 export function loadSeries(casefilesRoot: string, id: string): { paths: SeriesPaths; profile: SeriesProfile } {

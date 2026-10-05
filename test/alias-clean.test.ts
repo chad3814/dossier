@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isDroppableAlias, isNoiseAlias, isPossessiveOfName, nameFormsOf } from "../src/alias-clean.js";
+import { isDescriptiveAlias, isDroppableAlias, isNoiseAlias, isPossessiveOfName, nameFormsOf } from "../src/alias-clean.js";
 import type { RegistryEntity } from "../src/types.js";
 
 const ent = (canonicalName: string, aliases: string[]): RegistryEntity => ({
@@ -45,5 +45,31 @@ describe("isDroppableAlias", () => {
     expect(isDroppableAlias("who", katia)).toBe(true);
     expect(isDroppableAlias("Katia's map", katia)).toBe(true);
     expect(isDroppableAlias("Crawler Katia Grim", katia)).toBe(false);
+  });
+});
+
+describe("isDescriptiveAlias (names-only policy)", () => {
+  it("flags determiner-led descriptive phrases and kinship references", () => {
+    for (const a of ["the man behind the desk", "the winded woman", "his badge", "my son", "your boy", "the landlady", "a flustered functionary", "that woman", "the quest"]) {
+      expect(isDescriptiveAlias(a), a).toBe(true);
+    }
+  });
+  it("keeps names, titled names, nicknames, epithets-as-names and proper nouns after a determiner", () => {
+    for (const a of ["Humphrey Geller", "Young Master Humphrey", "Leechy", "Team Colin", "Madam Mayor", "the Adventure Society", "The Sanguine Horror", "Dean Tuckell", "Hump", "Crawler #4,122", "the Queen"]) {
+      expect(isDescriptiveAlias(a), a).toBe(false);
+    }
+  });
+});
+
+describe("isDroppableAlias with aliasPolicy", () => {
+  const e = ent("Elspeth Arella", ["Arella"]);
+  it("default policy keeps descriptive aliases (DCC behaviour unchanged)", () => {
+    expect(isDroppableAlias("the director", e)).toBe(false);
+    expect(isDroppableAlias("the director", e, "default")).toBe(false);
+  });
+  it("names-only policy drops them but keeps real name-forms", () => {
+    expect(isDroppableAlias("the director", e, "names-only")).toBe(true);
+    expect(isDroppableAlias("Madam Director", e, "names-only")).toBe(false);
+    expect(isDroppableAlias("Arella", e, "names-only")).toBe(false);
   });
 });

@@ -181,3 +181,12 @@ describe("resolveOutPath", () => {
     expect(resolveOutPath(paths, "/tmp/x.md")).toBe("/tmp/x.md");
   });
 });
+
+describe("validateProfile aliasPolicy", () => {
+  it("is optional, defaults absent, and accepts only the two known policies", () => {
+    expect(validateProfile(profile, "demo").aliasPolicy).toBeUndefined();
+    expect(validateProfile({ ...profile, aliasPolicy: "names-only" }, "demo").aliasPolicy).toBe("names-only");
+    expect(validateProfile({ ...profile, aliasPolicy: "default" }, "demo").aliasPolicy).toBe("default");
+    expect(() => validateProfile({ ...profile, aliasPolicy: "strict" }, "demo")).toThrow(/aliasPolicy/);
+  });
+});
