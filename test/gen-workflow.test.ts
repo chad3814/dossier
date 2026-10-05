@@ -88,3 +88,30 @@ describe("workflow/book-extract.js normalizeName stays in sync with src/registry
     expect(src).toMatch(/\\u0300-\\u036f/);
   });
 });
+
+describe("workflow/book-extract.js prompt layout is prompt-cache friendly", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(join(here, "..", "workflow", "book-extract.js"), "utf8");
+
+  it("serializes the prior-books index once, as a constant frozen for the whole book", () => {
+    expect(src).toMatch(/const frozenIndexJson = JSON\.stringify\(startIndex\);/);
+    // the growing mid-book additions are kept separately and never spliced into the frozen index
+    expect(src).toMatch(/const addedThisBook = \[\];/);
+    expect(src).not.toMatch(/index\.push\(/);
+  });
+
+  it("orders each chapter prompt as: fixed instructions → frozen index → this-book additions → file path", () => {
+    const start = src.indexOf("const extractPrompt = ");
+    const body = src.slice(start, src.indexOf("`;", start) + 2);
+    const at = (s: string): number => { const i = body.indexOf(s); expect(i, `missing ${s}`).toBeGreaterThan(-1); return i; };
+    const fixedTail = at("One row per entity within \"new\""); // last line of the fixed rules
+    const frozen = at("${frozenIndexJson}");
+    const added = at("${JSON.stringify(addedThisBook)}");
+    const path = at("${path}");
+    expect(fixedTail).toBeLessThan(frozen);
+    expect(frozen).toBeLessThan(added);
+    expect(added).toBeLessThan(path);
+    // the series rules are fixed text too, so they belong before the frozen index
+    expect(at("${seriesRules}")).toBeLessThan(frozen);
+  });
+});

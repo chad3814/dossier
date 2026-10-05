@@ -43,9 +43,13 @@ const agentRetry = async (prompt, opts, tries = 4) => {
   return null;
 };
 
-// Matching index (compact); grows as new entities are discovered this book.
-const index = startIndex.map((e) => ({ ...e }));
-const ids = new Set(index.map((e) => e.id));
+// Matching index. The prior-books part is serialized ONCE and never changes within a book, so
+// it forms a stable prompt-cache prefix shared by every chapter agent; this book's discoveries
+// are kept separately and appended AFTER it in each prompt. Cache writes are then proportional
+// to the handful of new entities, not to the whole index (see dcc/output/token-usage.md).
+const frozenIndexJson = JSON.stringify(startIndex);
+const addedThisBook = [];
+const ids = new Set(startIndex.map((e) => e.id));
 const newById = new Map();   // entities introduced this book (full objects)
 const matched = [];          // { id, anchor, aliases } for already-known entities
 const snippetsById = new Map();
@@ -136,15 +140,13 @@ const seriesRules = seriesNotes.length
   ? `\nSERIES-SPECIFIC RULES:\n${seriesNotes.map((n) => `- ${n}`).join('\n')}\n`
   : '';
 
-const extractPrompt = (path, idx) =>
+// Prompt layout matters for prompt caching: everything that is identical for every chapter of
+// this book (instructions, series rules, the frozen prior-books index) comes FIRST; the parts
+// that change per chapter (this book's new entities, the file path) come LAST.
+const extractPrompt = (path) =>
   `You are extracting named entities from ONE chapter of "${seriesTitle}" by ${seriesAuthor} (Book ${bookNumber}), processed in reading order.
 
-Use the Read tool to read this file: ${path}
-
-Each line is annotated like [B${bookNumber}·C3·¶5]; the token inside the brackets is the EXACT citation for that paragraph.
-
-ALREADY-KNOWN entities discovered in earlier chapters/books (JSON: id, canonicalName, aliases, type):
-${JSON.stringify(idx)}
+Each line of the chapter file is annotated like [B${bookNumber}·C3·¶5]; the token inside the brackets is the EXACT citation for that paragraph.
 
 For EVERY paragraph in which a qualifying entity appears:
 - If it refers to an already-known entity above — by name, alias, title, epithet, or context (an epithet, role, or description the text clearly ties to a known entity) — add an entry to "matched" with that entity's exact id, the exact anchor, and an "aliases" array of any NEW name-forms for it that appear here (otherwise []).
@@ -173,7 +175,15 @@ tag meanings:
 Rules:
 - Only use anchors that literally appear in the file; copy them verbatim.
 - If an entity is already in the known list, it goes in "matched" (with its id), never in "new".
-- One row per entity within "new" (collect ALL its paragraph mentions into that row's mentions array).`;
+- One row per entity within "new" (collect ALL its paragraph mentions into that row's mentions array).
+
+ALREADY-KNOWN entities from earlier books (JSON: id, canonicalName, aliases, type):
+${frozenIndexJson}
+
+ALSO ALREADY-KNOWN — discovered earlier in THIS book (match against these too; never re-create them):
+${JSON.stringify(addedThisBook)}
+
+Use the Read tool to read this chapter file: ${path}`;
 
 const describePrompt = (batch) =>
   `You are writing reference descriptions of newly-introduced characters/entities in "${seriesTitle}" by ${seriesAuthor}.
@@ -189,7 +199,7 @@ let dropped = 0;
 for (let i = 0; i < sectionFiles.length; i++) {
   const path = `${sectionDir}/${sectionFiles[i]}`;
   const label = sectionFiles[i].replace(/\.txt$/, '');
-  const res = await agentRetry(extractPrompt(path, index), {
+  const res = await agentRetry(extractPrompt(path), {
     schema: extractSchema,
     phase: 'Extract',
     label: `${seriesId}:extract:${label}`,
@@ -217,7 +227,7 @@ for (let i = 0; i < sectionFiles.length; i++) {
       appearances: anchors,
     };
     newById.set(id, ent);
-    index.push({ id, canonicalName: ent.canonicalName, aliases: ent.aliases, type: ent.type });
+    addedThisBook.push({ id, canonicalName: ent.canonicalName, aliases: ent.aliases, type: ent.type });
     for (const mn of (f.mentions || [])) addSnippet(id, mn.snippet);
     addHint(id, f.roleHint);
   }
