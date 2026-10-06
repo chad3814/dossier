@@ -48,8 +48,10 @@ npm install
 npm test                                    # unit tests for the deterministic core
 npm run preprocess     -- --series dcc 1    # ../dcc/epubs/book1.epub → ../dcc/data/book1/{sections,manifest.json}
 npm run gen-workflow   -- --series dcc 1    # → ../dcc/data/_wf/book-extract.js, seeded from the registry
-# run the extraction workflow, save its delta, then:
+# run the extraction workflow (Workflow tool, scriptPath = that file), then:
+npm run save-delta     -- --series dcc <workflow-output.json>   # flatten + validate → ../dcc/data/_wf/delta-book1.json
 npm run apply-delta    -- --series dcc ../dcc/data/_wf/delta-book1.json
+npm run gen-structure  -- --series dcc      # spine order for the new book — before dedupe
 npm run dedupe         -- --series dcc
 npm run render         -- --series dcc      # → ../dcc/output/characters.md
 npm run lookup         -- --series dcc "the cat"
