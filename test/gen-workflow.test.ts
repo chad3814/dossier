@@ -141,6 +141,11 @@ describe("candidateIndex: per-chapter candidates by text scan", () => {
   it("ignores noise/short forms so 'the' never qualifies an entity, and does not match inside words", () => {
     expect(candidateIndex(index, "the mapping of The Hierarchy and its rules").map((e) => e.id)).toEqual(["the-hierarchy"]); // matched via canonical, never via alias "the"; "mapping" ≠ "map"
     expect(candidateIndex(index, "the Hierarchy’s rules; Humphrey's smile").map((e) => e.id)).toEqual(["humphrey", "the-hierarchy"]); // possessives still match
+  });
+  it("matches names that themselves contain a possessive, whichever apostrophe the text uses", () => {
+    const shops = [{ id: "gilberts-shop", canonicalName: "Gilbert's Resilient Attire For the Discerning Gentleman", aliases: [], type: "place" as const }];
+    expect(candidateIndex(shops, "Jason entered Gilbert’s Resilient Attire For the Discerning Gentleman.").map((e) => e.id)).toEqual(["gilberts-shop"]);
+    expect(candidateIndex(shops, "Jason entered Gilbert's Resilient Attire For the Discerning Gentleman.").map((e) => e.id)).toEqual(["gilberts-shop"]);
     expect(candidateIndex(index, "nothing relevant here").map((e) => e.id)).toEqual([]);
   });
 });

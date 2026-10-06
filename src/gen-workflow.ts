@@ -19,13 +19,20 @@ const SCRIPT_SIZE_WARN = 480 * 1024;
  * handing every chapter agent the whole registry, whose prompt cost grows with the series
  * (see hwfwm/output/token-usage.md). Short (< 3 chars) and stopword forms never qualify.
  */
+/**
+ * Normalization used on BOTH sides of the candidate scan: drop possessive 's (straight or curly
+ * apostrophe) before normalizeName, so "Humphrey's" matches "humphrey" and a name that itself
+ * contains a possessive ("Gilbert's Resilient Attire") matches however the text spells it.
+ */
+function scanNormalize(s: string): string {
+  return normalizeName(s.replace(/[’']s\b/g, ""));
+}
+
 export function candidateIndex(index: RegistryIndexEntry[], chapterText: string): RegistryIndexEntry[] {
-  // Strip possessive 's (straight or curly apostrophe) before normalizing, so "Humphrey's" still
-  // matches the name form "humphrey" — normalizeName alone would fold it to "humphreys".
-  const text = ` ${normalizeName(chapterText.replace(/[’']s\b/g, ""))} `;
+  const text = ` ${scanNormalize(chapterText)} `;
   return index.filter((e) =>
     [e.canonicalName, ...e.aliases]
-      .map(normalizeName)
+      .map(scanNormalize)
       .some((form) => form.length >= 3 && !isNoiseAlias(form) && text.includes(` ${form} `)),
   );
 }
