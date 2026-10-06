@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flattenWorkflowResult, validateDelta } from "../src/save-delta.js";
+import { dropInvalidAnchors, flattenWorkflowResult, validateDelta } from "../src/save-delta.js";
 import type { RegistryEntity } from "../src/types.js";
 
 const ent = (id: string, appearances: string[]): RegistryEntity => ({
@@ -52,5 +52,24 @@ describe("validateDelta", () => {
     const r = validateDelta(d, sections, new Set(["known"]));
     expect(r.ok).toBe(true);
     expect(r.matchedToPrior).toBe(1);
+  });
+});
+
+describe("dropInvalidAnchors", () => {
+  const sections = "[B2·C1·¶1] Hello.\n[B2·C1·¶2] World.\n";
+  it("removes matched mentions and appearances whose anchor is not in the text, reporting what it dropped", () => {
+    const d = {
+      booksProcessed: [2],
+      matched: [{ id: "a", anchor: "B2·C1·¶1", aliases: [] }, { id: "a", anchor: "B2·C1·¶99", aliases: ["Ay"] }],
+      newEntities: [ent("x", ["B2·C1·¶2", "B2·C1·¶77"])],
+    };
+    const { delta, dropped } = dropInvalidAnchors(d, sections);
+    expect(delta.matched).toEqual([{ id: "a", anchor: "B2·C1·¶1", aliases: [] }]);
+    expect(delta.newEntities[0]!.appearances).toEqual(["B2·C1·¶2"]);
+    expect(dropped).toEqual(["a@B2·C1·¶99", "x@B2·C1·¶77"]);
+  });
+  it("refuses to strip a new entity of its last anchor or its firstAppearance", () => {
+    const d = { booksProcessed: [2], matched: [], newEntities: [ent("x", ["B2·C1·¶77"])] };
+    expect(() => dropInvalidAnchors(d, sections)).toThrow(/x/);
   });
 });

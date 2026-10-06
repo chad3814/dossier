@@ -79,15 +79,42 @@ export function validateDelta(delta: RegistryDelta, sectionText: string, priorId
   };
 }
 
+/**
+ * Remove mentions whose anchor does not exist in the section text (agents occasionally emit an
+ * off-by-one paragraph). Refuses — by throwing — to strip a new entity of its last anchor or of
+ * its firstAppearance, since that would need a human decision rather than a silent drop.
+ */
+export function dropInvalidAnchors(delta: RegistryDelta, sectionText: string): { delta: RegistryDelta; dropped: string[] } {
+  const ok = (a: string): boolean => sectionText.includes(`[${a}]`);
+  const dropped: string[] = [];
+  const matched = delta.matched.filter((m) => {
+    if (ok(m.anchor)) return true;
+    dropped.push(`${m.id}@${m.anchor}`);
+    return false;
+  });
+  const newEntities = delta.newEntities.map((e) => {
+    const appearances = e.appearances.filter((a) => {
+      if (ok(a)) return true;
+      dropped.push(`${e.id}@${a}`);
+      return false;
+    });
+    if (appearances.length === 0) throw new Error(`cannot drop every anchor of new entity ${e.id}`);
+    if (e.firstAppearance && !ok(e.firstAppearance.anchor)) throw new Error(`firstAppearance of new entity ${e.id} (${e.firstAppearance.anchor}) is not in the text`);
+    return { ...e, appearances };
+  });
+  return { delta: { ...delta, matched, newEntities }, dropped };
+}
+
 function main(): void {
-  const usage = "npm run save-delta -- --series <id> <workflow-output.json>";
+  const usage = "npm run save-delta -- --series <id> [--drop-invalid-anchors] <workflow-output.json>";
   const { paths, rest } = resolveSeriesOrExit(process.argv.slice(2), usage);
-  const inputArg = rest[0];
+  const dropInvalid = rest.includes("--drop-invalid-anchors");
+  const inputArg = rest.filter((a) => a !== "--drop-invalid-anchors")[0];
   if (!inputArg) {
     console.error(`usage: ${usage}`);
     process.exit(1);
   }
-  const delta = flattenWorkflowResult(JSON.parse(readFileSync(resolve(inputArg), "utf8")));
+  let delta = flattenWorkflowResult(JSON.parse(readFileSync(resolve(inputArg), "utf8")));
   const book = Math.max(...delta.booksProcessed);
   const sectionsDir = paths.sectionsDir(book);
   if (!existsSync(sectionsDir)) {
@@ -95,6 +122,11 @@ function main(): void {
     process.exit(1);
   }
   const sectionText = readdirSync(sectionsDir).map((f) => readFileSync(join(sectionsDir, f), "utf8")).join("\n");
+  if (dropInvalid) {
+    const r = dropInvalidAnchors(delta, sectionText);
+    delta = r.delta;
+    if (r.dropped.length) console.warn(`save-delta: dropped ${r.dropped.length} mention(s) with anchors not in the text: ${r.dropped.join(", ")}`);
+  }
   const registry = readRegistryOrEmpty(paths.registry);
   const v = validateDelta(delta, sectionText, new Set(registry.entities.map((e) => e.id)));
 
