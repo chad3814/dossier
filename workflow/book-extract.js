@@ -11,7 +11,9 @@ export const meta = {
 const bookNumber = 1;
 const sectionDir = '';
 const sectionFiles = [];
-const startIndex = [];           // compact prior registry: {id, canonicalName, aliases, type}
+const startIds = [];             // every entity id known before this book (validates matched ids)
+const knownEntities = {};        // id -> {n: canonicalName, a: aliases, t: type}, only entities that are a candidate somewhere in this book
+const candidatesByFile = {};     // section file -> ids of known entities whose names/aliases occur in that chapter's text
 const startBooksProcessed = [];
 const seriesId = '';
 const seriesTitle = '';
@@ -48,15 +50,18 @@ const agentRetry = async (prompt, opts, tries = 4) => {
   return null;
 };
 
-// Matching index. The prior-books part is serialized ONCE and never changes within a book, so
-// it forms a stable prompt-cache prefix shared by every chapter agent; this book's discoveries
-// are kept separately and appended AFTER it in each prompt. Cache writes are then proportional
-// to the handful of new entities, not to the whole index (see dcc/output/token-usage.md).
-const frozenIndexJson = JSON.stringify(startIndex);
+// Matching index. Each chapter agent sees only the prior-book entities whose names or aliases
+// occur in that chapter (precomputed by gen-workflow by scanning the text) — a few dozen entries
+// instead of the whole registry, so prompt cost stays flat as the series grows — plus every
+// entity discovered earlier in THIS book and any aliases learned for prior-book entities.
+const candidatesFor = (file) => (candidatesByFile[file] || []).map((id) => {
+  const k = knownEntities[id];
+  return { id, canonicalName: k.n, aliases: k.a, type: k.t };
+});
 const addedThisBook = [];
 const addedById = new Map();     // id -> entry in addedThisBook (so learned aliases can be attached)
-const learnedAliases = new Map(); // id -> Set of name-forms learned via `matched` for FROZEN (prior-book) entities
-const ids = new Set(startIndex.map((e) => e.id));
+const learnedAliases = new Map(); // id -> Set of name-forms learned via `matched` for prior-book entities
+const ids = new Set(startIds);
 const newById = new Map();   // entities introduced this book (full objects)
 const matched = [];          // { id, anchor, aliases } for already-known entities
 const snippetsById = new Map();
@@ -147,10 +152,8 @@ const seriesRules = seriesNotes.length
   ? `\nSERIES-SPECIFIC RULES:\n${seriesNotes.map((n) => `- ${n}`).join('\n')}\n`
   : '';
 
-// Prompt layout matters for prompt caching: everything that is identical for every chapter of
-// this book (instructions, series rules, the frozen prior-books index) comes FIRST; the parts
-// that change per chapter (this book's new entities, the file path) come LAST.
-const extractPrompt = (path) =>
+// Fixed instructions first; the per-chapter parts (candidates, this book's additions, path) last.
+const extractPrompt = (path, candidates) =>
   `You are extracting named entities from ONE chapter of "${seriesTitle}" by ${seriesAuthor} (Book ${bookNumber}), processed in reading order.
 
 Each line of the chapter file is annotated like [B${bookNumber}·C3·¶5]; the token inside the brackets is the EXACT citation for that paragraph. Return anchors WITHOUT the square brackets (e.g. B${bookNumber}·C3·¶5).
@@ -185,8 +188,8 @@ Rules:
 - If an entity is already in the known list, it goes in "matched" (with its id), never in "new".
 - One row per entity within "new" (collect ALL its paragraph mentions into that row's mentions array).
 
-ALREADY-KNOWN entities from earlier books (JSON: id, canonicalName, aliases, type):
-${frozenIndexJson}
+ALREADY-KNOWN entities from earlier books whose names or aliases occur in THIS chapter (JSON: id, canonicalName, aliases, type). An entity from an earlier book that is not listed here is not expected in this chapter; if the text clearly names one anyway, add it as "new" and it will be reconciled later:
+${JSON.stringify(candidates)}
 
 ALSO ALREADY-KNOWN — discovered earlier in THIS book (match against these too; never re-create them):
 ${JSON.stringify(addedThisBook)}
@@ -210,7 +213,7 @@ let dropped = 0;
 for (let i = 0; i < sectionFiles.length; i++) {
   const path = `${sectionDir}/${sectionFiles[i]}`;
   const label = sectionFiles[i].replace(/\.txt$/, '');
-  const res = await agentRetry(extractPrompt(path), {
+  const res = await agentRetry(extractPrompt(path, candidatesFor(sectionFiles[i])), {
     ...agentOpts,
     schema: extractSchema,
     phase: 'Extract',
