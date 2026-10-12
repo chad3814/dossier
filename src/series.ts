@@ -18,6 +18,10 @@ export interface SeriesProfile {
     agentType?: string;
     /** Model override for those agents (e.g. "fable"); the session model when omitted. */
     model?: string;
+    /** Agent type for the re-describe phase only; falls back to `agentType` when omitted. */
+    redescribeAgentType?: string;
+    /** Model for the re-describe phase only; falls back to `model` when omitted. */
+    redescribeModel?: string;
   };
   preprocess: {
     /** Spine entries to drop: exact, case-insensitive match on TOC title or spine idref. */
@@ -162,12 +166,15 @@ export function validateProfile(raw: unknown, expectedId: string): SeriesProfile
   if (!isRecord(extraction) || !isStringArray(extraction.notes) || !isStringArray(extraction.redescribeNotes)) {
     throw bad("extraction", "{ notes: string[], redescribeNotes: string[] }");
   }
-  for (const k of ["agentType", "model"] as const) {
+  const agentKeys = ["agentType", "model", "redescribeAgentType", "redescribeModel"] as const;
+  for (const k of agentKeys) {
     if (extraction[k] !== undefined && typeof extraction[k] !== "string") throw bad("extraction", `{ ${k}?: string }`);
   }
-  const agentSettings: { agentType?: string; model?: string } = {};
-  if (typeof extraction.agentType === "string") agentSettings.agentType = extraction.agentType;
-  if (typeof extraction.model === "string") agentSettings.model = extraction.model;
+  const agentSettings: Partial<Record<(typeof agentKeys)[number], string>> = {};
+  for (const k of agentKeys) {
+    const v = extraction[k];
+    if (typeof v === "string") agentSettings[k] = v;
+  }
 
   if (!isRecord(preprocess) || !isStringArray(preprocess.excludeSections) || !isRecord(preprocess.sectionLabels)) {
     throw bad("preprocess", "{ excludeSections: string[], sectionLabels: Record<string, string> }");
@@ -259,8 +266,11 @@ export function promptMeta(profile: SeriesProfile, kind: "extraction" | "redescr
     author: profile.author,
     notes: kind === "extraction" ? profile.extraction.notes : profile.extraction.redescribeNotes,
   };
-  if (profile.extraction.agentType !== undefined) meta.agentType = profile.extraction.agentType;
-  if (profile.extraction.model !== undefined) meta.model = profile.extraction.model;
+  // Re-describe may use its own agent settings (e.g. a cheaper model); unset ones fall back to extraction's.
+  const agentType = (kind === "redescribe" ? profile.extraction.redescribeAgentType : undefined) ?? profile.extraction.agentType;
+  const model = (kind === "redescribe" ? profile.extraction.redescribeModel : undefined) ?? profile.extraction.model;
+  if (agentType !== undefined) meta.agentType = agentType;
+  if (model !== undefined) meta.model = model;
   return meta;
 }
 

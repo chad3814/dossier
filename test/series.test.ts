@@ -201,3 +201,29 @@ describe("extraction.agentType / extraction.model (optional agent settings)", ()
     expect(() => validateProfile({ ...profile, extraction: { ...profile.extraction, model: 5 } }, "demo")).toThrow(/extraction/);
   });
 });
+
+describe("redescribeAgentType / redescribeModel (per-phase agent settings)", () => {
+  const withSettings = (extra: Record<string, unknown>) =>
+    validateProfile({ ...profile, extraction: { ...profile.extraction, agentType: "Explore", model: "fable", ...extra } }, "demo");
+
+  it("redescribe falls back to the extraction settings when its own are unset", () => {
+    const p = withSettings({});
+    expect(promptMeta(p, "redescribe")).toMatchObject({ agentType: "Explore", model: "fable" });
+    expect(promptMeta(p, "extraction")).toMatchObject({ agentType: "Explore", model: "fable" });
+  });
+  it("redescribe-specific settings override only the re-describe phase", () => {
+    const p = withSettings({ redescribeModel: "sonnet", redescribeAgentType: "general-purpose" });
+    expect(p.extraction.redescribeModel).toBe("sonnet");
+    expect(promptMeta(p, "redescribe")).toMatchObject({ agentType: "general-purpose", model: "sonnet" });
+    expect(promptMeta(p, "extraction")).toMatchObject({ agentType: "Explore", model: "fable" });
+  });
+  it("a series with no agent settings at all yields none for either phase", () => {
+    const p = validateProfile(profile, "demo");
+    expect(promptMeta(p, "redescribe").model).toBeUndefined();
+    expect(promptMeta(p, "redescribe").agentType).toBeUndefined();
+  });
+  it("rejects non-string values", () => {
+    expect(() => withSettings({ redescribeModel: 3 })).toThrow(/extraction/);
+    expect(() => withSettings({ redescribeAgentType: false })).toThrow(/extraction/);
+  });
+});
