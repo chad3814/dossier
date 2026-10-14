@@ -305,3 +305,18 @@ describe("applyCorrections keeps entities sorted by canonical name", () => {
     expect(out2.registry.entities.map((e) => e.canonicalName)).toEqual(["Alpha", "Zed", "Zorro"]);
   });
 });
+
+describe("setType", () => {
+  const mk = (id: string, type: "person" | "other") => ({
+    id, canonicalName: id, aliases: [], type, tags: ["in_world" as const], significance: "minor" as const,
+    description: "", firstAppearance: { anchor: "B1·C1·¶1", snippet: "" }, appearances: ["B1·C1·¶1"],
+  });
+  it("reclassifies the entity, is idempotent, and ignores missing ids", () => {
+    const registry: Registry = { booksProcessed: [1], entities: [mk("the-builder", "other"), mk("jason", "person")] };
+    const corrections = { setType: [{ id: "the-builder", type: "person" as const }, { id: "ghost", type: "person" as const }] };
+    const once = applyCorrections({ registry, aliases: [], descriptions: [], corrections });
+    expect(once.registry.entities.map((e) => [e.id, e.type])).toEqual([["jason", "person"], ["the-builder", "person"]]);
+    const twice = applyCorrections({ registry: once.registry, aliases: [], descriptions: [], corrections });
+    expect(twice.registry).toEqual(once.registry);
+  });
+});

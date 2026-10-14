@@ -5,7 +5,7 @@ import { isDroppableAlias, type AliasPolicy } from "./alias-clean.js";
 import { correctionIdMap, resolveHistoricalId } from "./id-history.js";
 import { buildSectionOrder, cleanAnchors, normalizeName } from "./registry.js";
 import { resolveSeriesOrExit } from "./series.js";
-import type { AliasEvent, DescriptionEvent, Registry, RegistryEntity } from "./types.js";
+import type { AliasEvent, DescriptionEvent, EntityType, Registry, RegistryEntity } from "./types.js";
 
 export interface Corrections {
   renameIds?: Array<{ from: string; to: string }>;
@@ -14,6 +14,8 @@ export interface Corrections {
   merges?: Array<{ from: string; into: string }>;
   /** Change an entity's display name (applied last, so a merged entity can be named); the old name becomes an alias. */
   setCanonical?: Array<{ id: string; canonicalName: string }>;
+  /** Reclassify an entity (e.g. a being the extraction typed "other" that is really a character). */
+  setType?: Array<{ id: string; type: EntityType }>;
 }
 
 export interface ApplyInput {
@@ -216,6 +218,12 @@ export function applyCorrections(input: ApplyInput): ApplyOutput {
     entity.canonicalName = canonicalName;
     entity.aliases = entity.aliases.filter((a) => normalizeName(a) !== normalizeName(canonicalName));
     addAliasIfAbsent(entity, previous);
+  }
+
+  // Step 6: setType — reclassification only; nothing else about the entity changes.
+  for (const { id, type } of corrections.setType ?? []) {
+    const entity = byId.get(id);
+    if (entity) entity.type = type;
   }
 
   // Registries are kept in canonical-name order (dedupe and materialize both produce it);
