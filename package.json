@@ -10,6 +10,7 @@
     "dedupe": "tsx src/dedupe.ts",
     "save-delta": "tsx src/save-delta.ts",
     "save-events": "tsx src/save-events.ts",
+    "normalize-significance": "tsx src/normalize-significance.ts",
     "apply-delta": "tsx src/apply-delta.ts",
     "migrate-to-log": "tsx src/migrate-to-log.ts",
     "view": "tsx src/view.ts",
